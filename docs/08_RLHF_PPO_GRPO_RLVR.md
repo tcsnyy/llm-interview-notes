@@ -1,0 +1,422 @@
+# 08 RLHF / PPO / GRPO / RLVR
+
+> **项目背景声明（面试必须明确说）**：本项目（医学 LLM Teacher）中**没有实现 PPO/GRPO/RLVR，也没有训练 Reward Model**。项目采用 SFT → DPO → LLM-as-Judge → Safety-RAG 路线。但面试中需要理解这些概念的原理、适用场景以及与 SFT/DPO 的区别。以下内容基于论文阅读、开源实现（MiniMind 简化版 PPO/GRPO）和面试准备整理。
+
+---
+
+## 一、面试 1 分钟/3 分钟回答版本
+
+### 1 分钟版本
+
+RLHF 是三阶段管线——SFT 学指令格式，Reward Model 学人类偏好，PPO 用强化学习优化 policy。PPO 需要同时跑 4 个模型（policy、reference、reward、critic），非常重。DPO 直接拿偏好数据做对比学习，省掉了 RM 和 RL。GRPO 是 PPO 的简化版：去掉 value model/critic，用同一 prompt 下的一组采样的相对好坏来算 advantage，特别适合 reasoning 场景。RLVR 更进一步，直接用规则验证器（代码能否跑通、数学答案对不对）作为 reward 信号，不需要人工标注偏好。DeepSeek-R1 就是 GRPO + RLVR 的典型。我们项目选择 SFT+DPO 是因为：医学标注成本高、安全风险大、DPO 稳定可控。
+
+### 3 分钟版本
+
+**RLHF 全景**：InstructGPT 提出经典三阶段——SFT 让模型学会指令格式，RM 在偏好标注上训练一个打分器，PPO 用 KL 约束下的 reward 信号优化 policy。PPO 是 clipped surrogate objective，限制每步更新幅度，加上 KL penalty 防止 reward hacking。
+
+**PPO 的工程成本**：需要同时加载 policy、reference、reward model、critic（value model）四个模型，显存爆炸。训练不稳定，reward 容易跑飞。所以后来有了 DPO，直接在 preference pair 上做对比学习，把 reward 建模隐式化，一条 loss 搞定。
+
+**GRPO 的创新**：DeepSeekMath 提出。核心 idea：不再训练单独的 value model，而是对同一个 prompt 采 N 个 response，用这组 response 的 reward 的均值和标准差做归一化，得到 group-relative advantage。省掉价值模型后，训练省一半显存，也更稳定。特别适合 reasoning：因为 reasoning 效果好坏的差距足够大，group 内部的相对比较就够了。
+
+**RLVR**：Reinforcement Learning with Verifiable Rewards。不用神经网络 reward，直接用规则验证——数学题对答案、代码跑测试用例、逻辑推理验证格式。DeepSeek-R1 用 rule-based reward 做大规 GRPO，发现模型自主涌现了长 chain-of-thought 和自我反思行为——这就是 R1 零样本 RL 直接带 reasoning 能力的原因。
+
+**为什么我们项目没做**：医学 QA 缺乏可验证 ground truth，rule-based reward 只能覆盖选择题、结构化输出等有限场景；训练 RM 需要大量医生标注，成本太高；DPO 在资源有限下更实用。
+
+---
+
+## 二、RLHF 三阶段（SFT → RM → PPO）
+
+### 2.1 阶段一：Supervised Fine-Tuning (SFT)
+
+在高质量指令-回答对上微调基座模型。目的是让模型学会遵循指令、输出符合人类偏好的格式。
+
+- 数据来源：人工标注、teacher 模型生成、真实用户问答日志
+- 本项目中：使用 HuatuoGPT2-SFT-GPT4-140K 子集 + Teacher 生成答案，最终 11,393 条 SFT 数据
+
+### 2.2 阶段二：Reward Model (RM) 训练
+
+RM 是一个独立训练的模型（通常从 SFT 模型初始化），输入 prompt+response，输出一个标量 reward。
+
+- 训练数据：人工对同一 prompt 的多个 response 进行排序（A > B > C）
+- 经典 loss：pairwise ranking loss
+
+```
+L_RM = -log(σ(r_chosen - r_rejected))
+```
+
+让 chosen 的 reward 比 rejected 的 reward 尽可能大。
+
+- RM 的要求：准确捕捉人类偏好的细粒度差异；不能只学会长度偏好等表面特征
+
+### 2.3 阶段三：PPO 强化学习
+
+用 PPO 算法优化 policy（即 SFT 模型），最大化 RM 打分，同时用 KL 散度约束不让模型偏离 SFT 模型太远。
+
+- PPO 本质是 actor-critic 方法：policy network（actor）生成 response，value network（critic）估计期望回报
+- 优化目标：max E[RM(prompt, response) - β * KL(π_θ || π_ref)]
+
+---
+
+## 三、PPO 核心机制
+
+### 3.1 Clipped Surrogate Objective
+
+PPO 的核心创新：用 clip 限制每次策略更新的幅度。
+
+```
+L_CLIP = E[min(r_t(θ) * A_t, clip(r_t(θ), 1-ε, 1+ε) * A_t)]
+```
+
+其中 r_t(θ) = π_θ(a_t|s_t) / π_old(a_t|s_t) 是新旧策略的概率比。
+
+- 当 advantage A_t > 0（这个 action 好），ratio 不要超过 1+ε，防止过度利用
+- 当 advantage A_t < 0（这个 action 不好），ratio 不要低于 1-ε，防止过度惩罚
+
+### 3.2 KL Penalty
+
+在 RLHF 中，PPO 的 reward 不是裸的 RM 分数，而是加了 KL 惩罚：
+
+```
+R_total = RM(prompt, response) - β * KL(π_θ || π_ref)
+```
+
+- β 是 KL 系数，控制模型不偏离 SFT 模型太远
+- 如果没有 KL penalty，模型会迅速学会 exploit RM 的漏洞（reward hacking），输出高 reward 但质量极差的文本
+
+### 3.3 Reward Hacking & Reward Overoptimization
+
+**Reward Hacking**：模型学会了骗 RM 而不是真正提高质量。比如发现 RM 偏爱长文本，就输出超长废话；发现 RM 偏爱某些关键词，就疯狂堆砌。
+
+**Reward Overoptimization**：RM 的分数持续上升，但真实质量（人工评估）反而下降。因为 RM 只是一个代理（proxy），不可能完美捕获人类偏好——过度优化代理指标必然偏离真实目标。这就是 Goodhart's Law：当一个度量成为目标，它就不再是好的度量。
+
+### 3.4 Advantage / Value Model / Critic / GAE
+
+- **Value Model / Critic**：估计从当前状态出发的期望累积回报 V(s)。在 RLHF 中，critic 输入 prompt+已生成的 token 前缀，输出期望 reward。
+- **Advantage**：A(s, a) = Q(s, a) - V(s)。衡量某个 action 比平均水平好多少。
+- **GAE (Generalized Advantage Estimation)**：一种平衡 bias-variance 的 advantage 估计方法，对多步 TD 误差做指数加权：
+
+```
+A_GAE = Σ (γλ)^l * δ_{t+l}
+δ_t = r_t + γV(s_{t+1}) - V(s_t)
+```
+
+面试中了解到这个程度即可，不需要推导公式细节。
+
+### 3.5 PPO 不稳定性和工程成本
+
+**不稳定性来源**：
+1. Reward 信号稀疏——整个 response 只有一个标量 reward，credit assignment 困难
+2. RM 和 policy 互相博弈，训练容易发散
+3. 超参数敏感：KL 系数、clip 范围、学习率、batch size 都需要精心调参
+4. 四个模型协同训练，任何一个出问题都会连锁反应
+
+**工程成本**：
+- 显存：同时加载 4 个模型（policy, ref, reward, critic），即使 LoRA 也需要大量显存
+- 训练时间：比 SFT 慢 5-10 倍
+- 需要大量偏好标注（通常数万到数十万对）
+
+---
+
+## 四、PPO vs DPO
+
+| 维度 | PPO (RLHF) | DPO |
+|------|------------|-----|
+| 需要 RM | 是，需单独训练 | 否，隐式建模 |
+| 需要 Critic | 是 | 否 |
+| 训练模型数 | 4 (policy, ref, RM, critic) | 2 (policy, ref) |
+| 训练稳定性 | 不稳定 | 较稳定 |
+| 显存需求 | 极高 | 中等 |
+| 在线采样 | 是（需要 policy 实时生成） | 否（离线数据） |
+| 偏好数据格式 | 标注打分/排序 | chosen/rejected pair |
+| 适合场景 | 大规模、有充足资源 | 资源受限、偏好数据明确 |
+| Reward Hacking | 有（需 KL 约束） | 风险较低（隐式 reward） |
+
+**关键理解**：DPO 把 RLHF 的目标函数重新参数化，直接从偏好对中学习，等价于在 Bradley-Terry 偏好模型下优化 KL 约束的 reward 最大化。DPO 不是"不做 RLHF"，而是"换了一种方式做 RLHF"。
+
+---
+
+## 五、RLAIF 与 Constitutional AI
+
+### 5.1 RLAIF (RL from AI Feedback)
+
+用 AI（另一个 LLM）替代人类提供偏好反馈。Anthropic 的 Constitutional AI 是代表作。
+
+- 流程：用 AI 对 response 进行对比评估 → 训练偏好模型（PM）→ RL 微调
+- 优势：成本低、可规模化、避免人类标注的不一致性
+- 风险：AI 反馈的偏差会传递到训练中
+
+### 5.2 Constitutional AI
+
+Anthropic 提出的方法，分两阶段：
+
+**阶段一（监督学习）**：
+1. 用 harmful prompt 让模型生成 response
+2. 让模型按 Constitution（一组安全原则）自我修正 response
+3. 用修正后的数据做 SFT
+
+**阶段二（RL）**：
+1. 用 AI 反馈（基于 Constitution 的评估）训练偏好模型
+2. 用 RL（PPO）优化，让模型输出符合 Constitution 的 response
+
+Constitution 示例：不要支持暴力、不要歧视、不要提供危险信息、尊重隐私等。
+
+---
+
+## 六、GRPO (Group Relative Policy Optimization)
+
+### 6.1 GRPO 是什么
+
+GRPO 由 DeepSeekMath（2024）提出，是 PPO 的简化变体。核心创新：
+
+**去掉 Value Model（Critic），用 Group Relative Reward 替代**。
+
+### 6.2 GRPO 算法流程
+
+1. 对每个 prompt，从当前 policy 采样 G 个 response（如 G=4 或 8）
+2. 用 Reward Model（或 rule-based verifier）给每个 response 打分
+3. 计算每个 response 的 advantage：
+
+```
+A_i = (r_i - mean(r_group)) / std(r_group)
+```
+
+即用 group 内的均值和标准差做归一化，得到相对优势。
+
+4. 用 PPO-style clipped objective 更新 policy：
+
+```
+L_GRPO = -E[min(r_t * A_i, clip(r_t, 1-ε, 1+ε) * A_i) - β * KL(π_θ || π_ref)]
+```
+
+### 6.3 GRPO 为什么不需要 Value Model
+
+传统的 PPO 需要 critic 估计 V(s) 来算 advantage。GRPO 的思路是：如果对同一个 prompt 采样足够多的 response，那么这些 response 的平均 reward 就是该 prompt 的期望 reward 的近似（蒙特卡洛估计）。用 group 内的相对排序代替绝对价值估计。
+
+数学直觉：V(prompt) ≈ mean({RM(prompt, response_i) for i=1..G})
+
+当 G 足够大时，group 平均 reward 趋近于真实期望 reward。
+
+### 6.4 GRPO vs PPO 核心区别
+
+| 维度 | PPO | GRPO |
+|------|-----|------|
+| Critic/Value Model | 需要 | 不需要 |
+| Advantage 计算 | GAE（需要 critic） | Group relative normalization |
+| 在线模型数 | 4 | 3 (policy, ref, RM) |
+| 采样需求 | 每步采样，逐 token 更新 | 每 prompt 采样 G 个完整 response |
+| 显存 | 极高 | 中等（省一个 critic） |
+| 稳定性 | 较差（critic 训练也难） | 较好 |
+| Reasoning 适配 | 一般 | 优秀 |
+
+### 6.5 GRPO 为什么适合 Reasoning Model
+
+1. **Reasoning 的 reward 方差大**：正确答案和错误答案的 reward 差异足够大，group 内归一化后的 advantage 信号很强
+2. **不需要 per-token reward**：reasoning 的评估通常在完整输出后进行（对答案），GRPO 天然适合 sparse reward 场景
+3. **节省显存用于更长输出**：reasoning 模型输出长（几千 token），省掉 critic 的显存可以增加采样数或支持更长序列
+4. **Group 采样天然适合 exploration**：同一 prompt 采多种推理路径，差的路径自然被压低，好的被提升
+
+---
+
+## 七、RLVR (Reinforcement Learning with Verifiable Rewards)
+
+### 7.1 RLVR 是什么
+
+RLVR 是 DeepSeek-R1 技术报告中描述的训练方法。核心：用**基于规则的验证器**替代 Reward Model，提供确定性的 reward 信号。
+
+### 7.2 Verifiable Reward 的类型
+
+**Outcome Reward（结果奖励）**：
+- 数学题：最终答案是否与标准答案匹配
+- 代码题：是否通过所有测试用例
+- 选择题：选择的选项是否正确
+
+**Process Reward（过程奖励）**：
+- 推理步骤是否正确
+- 中间计算是否准确
+- 逻辑链是否完整
+
+**Rule-Based Reward 的实现**：
+- 数学：提取 \boxed{...} 中的答案，与 ground truth 比较
+- 代码：用 sandbox 执行，检查 pass/fail
+- 格式：检查是否包含思考过程标签（如 `<｜end▁of▁thinking｜>数学领域最典型：通过规则验证器做 GRPO 让模型涌现长 CoT 和自我反思。R1 技术报告的核心发现：
+
+1. **R1-Zero**：直接在 DeepSeek-V3-Base 上做纯 RL（GRPO + rule-based reward），不经过任何 SFT。模型自主学会了：自我检查、反思、回溯、探索替代方案。
+2. **R1**：先收集少量高质量 cold-start 数据做 SFT，再做 RLVR，效果更好。
+3. 推理能力的涌现来自 RL 训练过程中模型发现"多想一想"能提高正确率，reward 信号驱动了这一行为。
+
+所以 GRPO/RLVR 不是因为有人推才火，而是因为 R1 证明了这条路能做出真正的 reasoning 能力。在此之前，reasoning 主要靠 prompt engineering（CoT、ToT）和多模型投票（self-consistency），RLVR 证明模型可以自己学出 reasoning 策略。
+
+---
+
+## 九、其他 RL 变体（简要了解）
+
+### 9.1 RLOO (REINFORCE Leave-One-Out)
+
+和 GRPO 类似，也用 group sampling 去掉 critic。区别在于 advantage 计算方式：
+
+```
+A_i = r_i - mean(r_{j != i})
+```
+
+即用除自己之外的 group 平均作为 baseline，理论上比 GRPO 的全局 group 归一化更无偏。
+
+### 9.2 REINFORCE
+
+最基础的 policy gradient 方法：
+
+```
+∇J = E[∇log π(a|s) * R]
+```
+
+没有 critic，没有 baseline，方差极大，原始形式几乎无法训练 LLM。
+
+### 9.3 REINFORCE++
+
+REINFORCE 的改进版，加了：
+- 多采样求平均作为 baseline（类似于 RLOO）
+- PPO-style clipping
+- KL 正则化
+
+可以理解为 GRPO 的一个变体。
+
+### 9.4 DAPO
+
+DAPO 对 GRPO 做了几项改进：
+- Dynamic Sampling：根据训练阶段动态调整采样数
+- Over-long Reward Shaping：惩罚超出长度限制的 response
+- KL 约束的动态调整
+
+### 9.5 Dr. GRPO
+
+Dr. GRPO 在 GRPO 的基础上引入了 discount factor，让 advantage 计算考虑时序衰减，更适合多轮对话等序列决策场景。
+
+---
+
+## 十、OPD 和 GRPO 的区别（简要）
+
+**OPD (Offline Policy Distillation)** 是另一种不用 RL 的对齐方法：
+
+| 维度 | OPD | GRPO |
+|------|-----|------|
+| 本质 | 蒸馏 | 强化学习 |
+| 需要在线采样 | 否 | 是 |
+| 优化目标 | 模仿 teacher policy 的输出分布 | 最大化 reward |
+| 稳定性 | 高 | 中等 |
+| 探索能力 | 无（只模仿） | 有（RL 探索） |
+| Reasonining 提升 | 有限 | 显著（R1 证明） |
+
+OPD 相当于"让好老师教你"，GRPO 相当于"让规则奖励你自己探索"。在 reasoning 提升上，GRPO 的探索-奖励机制更有效。
+
+---
+
+## 十一、医学问答是否适合 GRPO/RLVR
+
+### 11.1 适合的场景
+
+- **医学选择题/考试题**：有明确 ground truth，可以做 outcome reward，非常适合 RLVR
+- **结构化诊断输出**：如果输出格式是结构化的（诊断 ICD 编码、药方列表），可以用规则检查
+- **临床路径推理**：可以通过医学知识图谱验证推理链中的实体关系
+- **医学代码生成**：如生成 SQL 查询 EHR 数据，可通过执行结果验证
+
+### 11.2 不适合的场景
+
+- **开放式医学咨询**：没有唯一正确答案，rule-based reward 无法设计
+- **共情沟通/医患对话**：质量在于语气、共情、信息传递方式，难以用规则衡量
+- **复杂鉴别诊断**：正确答案可能不唯一，需要临床经验判断
+- **多模态诊断**：涉及影像、检验结果的综合判断
+
+### 11.3 核心挑战
+
+医学 QA 的根本问题是**缺乏可验证 ground truth**。不像数学有确定答案，医学问题的"正确答案"往往是概率性的、上下文相关的、因人而异的。这是本项目没有直接做 PPO/GRPO 的核心原因之一。
+
+---
+
+## 十二、为什么本项目没有直接做 PPO/GRPO
+
+**直接原因（面试中必须讲清楚）**：
+
+1. **医学标注成本极高**：训练 RM 需要大量医生标注偏好，成本远超通用领域。一对医学偏好标注可能需要数分钟到数十分钟，且需要专业背景。
+
+2. **医学安全风险不可控**：RL 训练有不可预测性。在生产环境中，reward hacking 可能导致模型输出看似正确但实际危险的医学建议。DPO 通过直接对比学习更可控。
+
+3. **缺乏可靠的自动化 reward 信号**：大部分医学 QA 无法设计 rule-based reward，而神经网络 RM 在医学领域存在严重 hallucination 风险。
+
+4. **资源约束**：PPO 需要大量显存和时间，团队资源有限，DPO 路线性价比更高。
+
+5. **DPO 已能覆盖大部分对齐需求**：在 preference pair 数据质量有保障的情况下，DPO 能达到接近 PPO 的效果，且工程复杂度低得多。
+
+**技术路线选择**：SFT 打基础 → DPO 做偏好对齐 → LLM-as-Judge 做质量评估 → Safety-RAG 兜底安全。这是一条务实可行的路线，在学术界和工业界都有广泛采用。
+
+---
+
+## 十三、如果后续扩展医学 RLVR，应该找哪些可验证信号
+
+### 13.1 可直接做 Rule-Based Reward 的任务
+
+1. **医学考试/选择题**：
+   - Reward: 答案是否正确（选项 A/B/C/D）
+   - 数据：执业医师考试题库、USMLE、MedMCQA
+
+2. **医学计算题**：
+   - Reward: 计算结果是否在允许误差范围内
+   - 例：药物剂量计算、BMI 计算、补液量计算
+
+3. **结构化信息提取**：
+   - Reward: 提取的实体（疾病名、药名、症状）是否与标注一致
+   - 可通过 F1 分数作为 reward
+
+4. **医学代码生成**：
+   - Reward: 生成的 ICD/CPT 代码是否正确
+   - 可通过代码表验证
+
+5. **医学知识图谱推理**：
+   - Reward: 推理链中的实体关系是否在知识图谱中可验证
+
+### 13.2 需要设计的 Semi-Verifiable Signal
+
+1. **诊断一致性**：多个模型/多轮推理给出相同诊断 → reward 一致性
+2. **引文准确性**：模型引用文献的 PubMed ID 是否存在、摘要是否匹配
+3. **禁忌症检查**：药物推荐是否与患者病史冲突（可通过规则库验证）
+
+### 13.3 无法做 Rule-Based 的任务
+
+1. **共情质量**、**沟通技巧**：必须依赖人工或 LLM-as-Judge 评估
+2. **复杂病例的综合判断**：没有唯一正确答案
+3. **前沿医学知识**：参考答案本身可能就有不确定性
+
+---
+
+## 十四、背诵版总结
+
+```
+【RLHF 三阶段】SFT 学格式 → RM 学偏好 → PPO 优化
+【PPO 核心】clipped objective + KL penalty, 需要 4 个模型
+【Reward Hacking】模型骗 RM 得高分但质量差, KL penalty 防这个
+【DPO vs PPO】DPO 省 RM+critic, 离线做, 更稳, 本项目选了 DPO
+【GRPO 核心】去掉 value model, 用 group 内归一化算 advantage
+【GRPO 公式】A_i = (r_i - mean) / std, 同一 prompt 采 G 个
+【RLVR 核心】用规则验证取代神经网络 RM, 不要偏好标注
+【R1 为什么火】GRPO+RLVR 让模型自发涌现 reasoning 能力
+【OPD vs GRPO】OPD 是蒸馏, GRPO 是 RL 探索
+【本项目为什么没做 PPO/GRPO】
+  - 医学标注成本高、安全风险大、缺乏自动化 reward
+  - DPO 在资源有限下够用、安全可控
+【医学 RLVR 适合什么】选择题、计算题、结构化提取、代码生成
+【医学 RLVR 不适合什么】开放式咨询、共情沟通、复杂鉴别诊断
+```
+
+---
+
+## 十五、面试可能的追问及回答要点
+
+**Q: 你们的 DPO 和 PPO 本质区别是什么？**
+A: DPO 是离线对比学习，PPO 是在线与 RM 博弈。DPO 相当于把 RLHF 的 reward 建模隐式化，直接用 chosen/rejected pair 的对比信号更新 policy。我们在医学场景选 DPO，因为更稳定、更安全、更省资源。
+
+**Q: GRPO 真的不需要任何形式的 critic 吗？**
+A: 不需要单独的 critic 网络。GRPO 的 group mean 充当了 implicit baseline——它是对 V(prompt) 的蒙特卡洛估计。当采样数 G 足够大（通常 G>=4），这个估计是有效的。
+
+**Q: 如果让你现在给医学项目加 GRPO，你怎么设计？**
+A: 选医学选择题做 RLVR 试点。用执业医师题库，把选项正确性作为 rule-based reward。用 medical safety classifier 做额外的安全约束 reward。先在 1B 小模型上验证方案再 scale。
+
+**Q: RLVR 的 reward 会不会过于稀疏？**
+A: 确实稀疏。但 reasoning 模型的好处是输出长、包含中间步骤，即使只有最终 reward，中间步骤也能通过 credit assignment 学到有用的策略。R1 证明稀疏 reward 在 reasoning 上足够有效。

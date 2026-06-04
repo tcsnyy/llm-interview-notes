@@ -1,0 +1,119 @@
+site_name: LLM 后训练算法面试八股
+site_description: 大模型后训练算法实习面试系统化复习资料 —— SFT / DPO / LoRA / RAG / Safety-RAG / vLLM
+site_author: tcsnyy
+repo_url: https://github.com/tcsnyy/llm-interview-notes
+repo_name: tcsnyy/llm-interview-notes
+edit_uri: ""
+
+theme:
+  name: material
+  language: zh
+  palette:
+    - scheme: default
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-7
+        name: 切换至深色模式
+    - scheme: slate
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-4
+        name: 切换至浅色模式
+  font:
+    text: Noto Sans SC
+    code: JetBrains Mono
+  features:
+    - navigation.instant
+    - navigation.tracking
+    - navigation.expand
+    - navigation.indexes
+    - navigation.top
+    - search.suggest
+    - search.highlight
+    - search.share
+    - content.code.copy
+    - content.code.annotate
+    - toc.follow
+    - toc.integrate
+
+plugins:
+  - search:
+      lang: zh
+      separator: '[\s​\-、。，！？；：""''（）《》【】\[\]{}]+'
+
+markdown_extensions:
+  - pymdownx.highlight:
+      anchor_linenums: true
+      line_spans: __span
+      pygments_lang_class: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.superfences
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.caret
+  - pymdownx.mark
+  - pymdownx.tilde
+  - admonition
+  - footnotes
+  - toc:
+      permalink: true
+      toc_depth: 4
+  - tables
+  - attr_list
+  - md_in_html
+
+nav:
+  - 首页:
+    - 如何使用这套资料: 00_README_如何使用这套资料.md
+    - 岗位画像与复习路线: 01_岗位画像与复习路线.md
+
+  - 基础知识:
+    - 大模型基础八股: 02_大模型基础八股.md
+    - Transformer与Attention: 03_Transformer与Attention.md
+    - Tokenizer与ChatTemplate: 04_Tokenizer与ChatTemplate.md
+
+  - 核心算法:
+    - SFT指令微调: 05_SFT指令微调.md
+    - LoRA与QLoRA: 06_LoRA_QLoRA_PEFT.md
+    - DPO偏好优化: 07_DPO偏好优化.md
+    - RLHF与GRPO: 08_RLHF_PPO_GRPO_RLVR.md
+    - Reward Model与PRM: 09_Reward_Model_PRM_ORM_Verifier.md
+    - 后训练数据工程: 10_后训练数据工程_Teacher数据生成.md
+
+  - 评测与RAG:
+    - 评测体系与LLM-as-Judge: 11_评测体系与LLM-as-Judge.md
+    - RAG与Safety-RAG详细八股: 12_RAG与SafetyRAG详细八股.md
+
+  - 部署与安全:
+    - 推理部署与vLLM: 13_推理部署与vLLM.md
+    - 训练工程与显存优化: 14_训练工程与显存优化.md
+    - 安全对齐与医疗场景: 15_安全对齐与医疗场景.md
+
+  - 代码与刷题:
+    - 手撕代码合集: 16_手撕代码合集.md
+    - 算法题与PyTorch题: 17_算法题与PyTorch题.md
+
+  - 热点与项目:
+    - 当前热点与趋势: 18_当前热点与趋势_2025_2026.md
+    - 医学LLM项目深挖问答: 19_医学LLM_Teacher项目深挖问答.md
+    - MiniMind项目可讲点: 20_MiniMind项目可讲点.md
+
+  - 冲刺与自测:
+    - 一周冲刺复习计划: 21_一周冲刺复习计划.md
+    - 152问Checklist: 22_100问Checklist.md
+    - 262张Flashcards: 23_150张Flashcards.md
+    - 面试自我介绍模板: 24_面试自我介绍与项目讲述模板.md
+    - 后训练算法对比总表: 25_后训练算法对比总表.md
+    - 常见追问与避坑回答: 26_常见追问与避坑回答.md
+
+  - 工程落地与部署:
+    - 项目落地与服务化部署: 33_项目落地与服务化部署.md
+    - vLLM推理部署与性能优化: 34_vLLM推理部署与性能优化.md
+    - RAG工程化与低延迟优化: 35_RAG工程化与低延迟优化.md
+    - 并行计算与分布式训练: 36_并行计算与分布式训练.md
+    - 分布式推理与多GPU部署: 37_分布式推理与多GPU部署.md
+    - 线上监控与灰度发布: 38_线上监控_灰度发布_AB测试与安全审计.md
+    - 医学LLM落地方案与面试讲法: 39_医学LLM落地方案与面试讲法.md
