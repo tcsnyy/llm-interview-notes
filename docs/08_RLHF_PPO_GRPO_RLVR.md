@@ -273,6 +273,59 @@ GRPO 也因此训练更快、超参更少、工程实现更简单——这也是
 
 这些变体主要针对 GRPO 的样本利用率低、reward 设计单一、训练不稳定的问题。当前项目中未实现，面试中了解即可。
 
+
+### Q: PPO 的完整 loss 由哪几部分组成？star:5
+
+PPO 训练涉及 4 个 loss：
+
+1. **Policy Loss（策略损失）**：$\mathcal{L}_{policy} = -\min(r_t \hat{A}_t, \text{clip}(r_t, 1-\epsilon, 1+\epsilon) \hat{A}_t)$
+   其中 $r_t = \frac{\pi_\theta(a_t|s_t)}{\pi_{old}(a_t|s_t)}$ 是 ratio，$\hat{A}_t$ 是 advantage。
+
+2. **Value Loss（价值损失）**：$\mathcal{L}_{value} = (V_\theta(s_t) - R_t)^2$
+   Critic 预测的 value 和实际 return 的 MSE。
+
+3. **Entropy Loss（熵损失）**：$\mathcal{L}_{entropy} = -\mathbb{E}[\mathcal{H}(\pi_\theta(\cdot|s))]$
+   鼓励策略保持一定的随机性，防止过早坍塌到确定性策略。系数通常很小（~0.01）。
+
+4. **KL Penalty**：$-\beta \cdot D_{KL}(\pi_\theta \| \pi_{ref})$
+   在 RLHF 中额外约束 policy 不要偏离 reference model 太远，防止 reward hacking。
+
+**总 loss**：$\mathcal{L} = \mathcal{L}_{policy} + c_1 \mathcal{L}_{value} - c_2 \mathcal{L}_{entropy} + c_3 \mathcal{L}_{KL}$
+
+### Q: PPO 的 Clip 机制和 KL 约束有什么区别？都限制更新幅度，有什么不同？star:4
+
+| | Clip 机制 | KL 约束 |
+|---|---------|--------|
+| 作用方式 | 直接截断 ratio 在 $[1-\epsilon, 1+\epsilon]$ 内 | 在 loss 中加惩罚项 |
+| 限制对象 | 单步 policy update 幅度 | policy 与 reference 的距离 |
+| 硬/软约束 | 硬截断（超出范围无梯度） | 软约束（超出范围有惩罚） |
+| 目的 | 训练稳定性（信任域） | 防止偏离 SFT 分布过远 |
+
+**关键区别**：Clip 是"同一轮训练中别更新太快"，KL 是"别跑离 SFT 模型太远"。它们是两个正交的约束——Clip 控制优化步长，KL 控制优化终点。PPO 中两者同时使用：Clip 保证每步稳定，KL 保证最终结果不崩塌。
+
+### Q: GRPO 中，如果一个 group 内所有回答的 reward 都很低，模型会怎么更新？star:4
+
+组内标准化后：$\hat{A}_i = \frac{r_i - \text{mean}(r)}{\text{std}(r)}$
+
+即使所有 reward 都低（如都是 1-2/10 分），标准化后仍会有人"相对好"（正 advantage）和"相对差"（负 advantage）。模型会把"相对好"的差回答往上推、"相对差"的更差回答往下拉。
+
+**这是 GRPO 的潜在风险**：在差的 group 里做"矮子里拔将军"——学到的可能是"如何在差回答中不那么差"，而非"如何产出好回答"。缓解方法：
+1. **增大 group size**：更多样本 → 更大概率有人碰巧做好
+2. **Reward model 质量要够高**：能区分"差"和"极差"
+3. **设绝对阈值**：如果 group mean < 某个阈值（如 <1/10），跳过该 group 的更新
+4. **混入高质量样本**：在 batch 里穿插已知好回答作为 anchor
+
+### Q: GRPO 和 DPO 能不能结合使用？先 DPO 再 GRPO 合理吗？star:3
+
+可以结合。典型流程：**SFT → DPO → GRPO**。
+
+DPO 先做偏好对齐——让模型在已有采样数据上学到"什么是好回答"，建立基本的 reward 感知。GRPO 再在 DPO 模型基础上做 on-policy 探索——用 verifiable reward 或 reward model 进一步优化。
+
+**为什么这个顺序合理**：DPO 提供更好的初始化策略（比纯 SFT 更能区分好坏），GRPO 需要策略有一定质量才能生成有意义的 group（否则所有回答都很差，group 内比较无意义）。
+
+**两者目标不冲突**：DPO 优化的是静态偏好对（已有数据），GRPO 优化的是动态采样反馈（自己生成 → 被打分 → 组内对比）。DPO 解决"你知道什么是好的"，GRPO 解决"你能持续产出更好的"。
+
+
 ## 背诵版总结
 
 ```
