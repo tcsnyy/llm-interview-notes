@@ -4,7 +4,7 @@
 
 ## 一、Tokenizer 基础
 
-### 1.1 Q: 解释一下 tokenizer 在 LLM 中的作用，你了解哪些常见的 tokenization 算法？star:5
+### 1.1 Q: 解释一下 tokenizer 在 LLM 中的作用，你了解哪些常见的 tokenization 算法？⭐⭐⭐⭐⭐
 
 Tokenizer 就是把自然语言文本转换成模型能理解的数字序列（token IDs）的组件，同时也是模型输出 token IDs 之后反向映射回文字的解码器。可以理解成一个"翻译官"：用户写的是中文/英文，模型内部运算全是向量和数字，tokenizer 负责在二者之间做翻译。
 
@@ -36,7 +36,7 @@ LLM 领域主流的 tokenization 算法有四种：
 
 ---
 
-### 1.2 Q: 普通 BPE 和 byte-level BPE 有什么区别？为什么 GPT-2 之后要改用 byte-level？star:4
+### 1.2 Q: 普通 BPE 和 byte-level BPE 有什么区别？为什么 GPT-2 之后要改用 byte-level？⭐⭐⭐⭐
 
 普通 BPE 是在 Unicode 字符级别上合并的，也就是说，如果训练语料里没见过某个字符（比如罕见的中文字、特殊符号），它就没办法编码，只能输出 UNK。
 
@@ -54,7 +54,7 @@ Byte-Level BPE 是从 byte（0-255）粒度开始的——任何 Unicode 字符�
 
 ---
 
-### 1.3 Q: 你项目里用了哪些 special tokens？BOS/EOS/PAD/UNK 分别是什么意思？为什么要加这些？star:4
+### 1.3 Q: 你项目里用了哪些 special tokens？BOS/EOS/PAD/UNK 分别是什么意思？为什么要加这些？⭐⭐⭐⭐
 
 | Token    | 全称                   | 作用                                                                 |
 | -------- | ---------------------- | -------------------------------------------------------------------- |
@@ -72,7 +72,7 @@ Byte-Level BPE 是从 byte（0-255）粒度开始的——任何 Unicode 字符�
 
 ---
 
-### 1.4 Q: 中文场景下 tokenizer 有什么特殊问题？你做医学 LLM 的时候遇到 tokenization 相关的坑吗？star:5
+### 1.4 Q: 中文场景下 tokenizer 有什么特殊问题？你做医学 LLM 的时候遇到 tokenization 相关的坑吗？⭐⭐⭐⭐⭐
 
 中文 tokenizer 的几个核心问题：
 
@@ -114,7 +114,7 @@ Token 效率的衡量指标叫 **Fertility**（每个语义单位被切成的平
 
 ## 二、Chat Template
 
-### 2.1 Q: 你了解 chat template 吗？SFT/DPO 训练为什么必须用 chat template？star:5
+### 2.1 Q: 你了解 chat template 吗？SFT/DPO 训练为什么必须用 chat template？⭐⭐⭐⭐⭐
 
 **Chat Template 本质上是一个格式化函数**，把对话结构（system prompt、user message、assistant response 的列表）转换成模型在预训练阶段见过的格式的纯文本字符串。
 
@@ -150,7 +150,7 @@ Token 效率的衡量指标叫 **Fertility**（每个语义单位被切成的平
 
 ---
 
-### 2.2 Q: 你在训练数据构造中是怎么用 apply_chat_template 的？它到底做了什么？star:5
+### 2.2 Q: 你在训练数据构造中是怎么用 apply_chat_template 的？它到底做了什么？⭐⭐⭐⭐⭐
 
 `tokenizer.apply_chat_template(messages, tokenize=True)` 做的事：
 
@@ -196,7 +196,7 @@ tokenized = tokenizer.apply_chat_template(
 
 ---
 
-### 2.3 Q: 你做 Qwen3 项目的时候，chat template 里 enable_thinking 是用来干什么的？为什么要设为 False？star:4
+### 2.3 Q: 你做 Qwen3 项目的时候，chat template 里 enable_thinking 是用来干什么的？为什么要设为 False？⭐⭐⭐⭐
 
 Qwen3 是支持 thinking（思考链）的模型，它的 chat template 里有一个 `enable_thinking` 开关：
 
@@ -223,7 +223,7 @@ Qwen3 是支持 thinking（思考链）的模型，它的 chat template 里有�
 
 ---
 
-### 2.4 Q: 你听说过 think 泄漏吗？是怎么产生的，怎么避免？star:4
+### 2.4 Q: 你听说过 think 泄漏吗？是怎么产生的，怎么避免？⭐⭐⭐⭐
 
 **`<think>` 泄漏**指的是推理模型（如 Qwen3、DeepSeek-R1）在训练时学会的"先思考再回答"格式，在部署时没有被正确过滤或隐藏，导致用户看到了模型内部思考过程的现象。
 
@@ -255,7 +255,7 @@ Qwen3 是支持 thinking（思考链）的模型，它的 chat template 里有�
 
 ---
 
-### 2.5 Q: 如果训练时用的 chat template 和上线部署的不一样，会出什么问题？你为什么这么重视一致性？star:5
+### 2.5 Q: 如果训练时用的 chat template 和上线部署的不一样，会出什么问题？你为什么这么重视一致性？⭐⭐⭐⭐⭐
 
 这是 SFT 部署阶段最容易出问题的地方之一，后果分几个等级：
 
@@ -283,7 +283,7 @@ Qwen3 是支持 thinking（思考链）的模型，它的 chat template 里有�
 
 ---
 
-### 2.6 Q: 做 DPO 的时候，chosen 和 rejected 的 prompt 部分为什么必须完全一致？如果我给了两个不同的 system prompt 会怎样？star:5
+### 2.6 Q: 做 DPO 的时候，chosen 和 rejected 的 prompt 部分为什么必须完全一致？如果我给了两个不同的 system prompt 会怎样？⭐⭐⭐⭐⭐
 
 DPO 的核心逻辑是：模型在**同一个 prompt 下**，学习偏好 chosen 回答而非 rejected 回答。
 
@@ -309,7 +309,7 @@ DPO 的核心逻辑是：模型在**同一个 prompt 下**，学习偏好 chosen
 
 ---
 
-### 2.7 Q: batch 训练的时候为什么通常用 right padding，而推理的时候用 left padding？反过来行不行？star:4
+### 2.7 Q: batch 训练的时候为什么通常用 right padding，而推理的时候用 left padding？反过来行不行？⭐⭐⭐⭐
 
 **训练时用 Right Padding：**
 

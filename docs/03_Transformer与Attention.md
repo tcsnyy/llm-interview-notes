@@ -4,7 +4,7 @@
 
 ## 一、Transformer 整体结构
 
-### Q: 画出 Transformer 的结构图，并解释每个组件的功能。star:5
+### Q: 画出 Transformer 的结构图，并解释每个组件的功能。⭐⭐⭐⭐⭐
 
 ![Transformer 架构图](images/Transformer%E6%95%B4%E4%BD%93%E6%9E%B6%E6%9E%84%E5%9B%BE.jpg)
 
@@ -27,7 +27,7 @@ Transformer 由 Encoder 和 Decoder 两部分组成（但现在 LLM 只用 Decod
 
 ## 二、Encoder-only / Decoder-only / Encoder-Decoder 区别
 
-### Q: Bert 和 GPT 的架构区别是什么？为什么现在大模型都用 decoder-only？star:4
+### Q: Bert 和 GPT 的架构区别是什么？为什么现在大模型都用 decoder-only？⭐⭐⭐⭐
 
 | 架构 | 代表模型 | Attention 类型 | 适用场景 |
 |------|---------|---------------|---------|
@@ -44,7 +44,7 @@ Decoder-only 成为主流的原因：
 
 ## 三、Self-Attention / Multi-Head Attention
 
-### Q: 详细推导 Self-Attention 的计算过程，包括维度。star:5
+### Q: 详细推导 Self-Attention 的计算过程，包括维度。⭐⭐⭐⭐⭐
 
 **核心公式**：
 
@@ -79,7 +79,7 @@ $$\text{Attention}(Q, K, V) = \text{softmax}\left(\frac{QK^T}{\sqrt{d_k}}\right)
 
 ## 四、MHA / MQA / GQA 区别
 
-### Q: MHA、MQA、GQA、MLA 分别是什么？为什么现在都用 GQA？star:5
+### Q: MHA、MQA、GQA、MLA 分别是什么？为什么现在都用 GQA？⭐⭐⭐⭐⭐
 
 ![MHA MQA GQA MLA 对比图](images/MHA%20MQA%20GQA%20MLA%E5%AF%B9%E6%AF%94%E5%9B%BE%20.png)
 
@@ -123,7 +123,7 @@ KV Cache 从 8 头降至 2 头，显存节省 75%，推理速度提升明显。
 
 ## 五、Q/K/V 作用
 
-### Q: Q、K、V 分别代表什么？为什么需要三个投影？star:4
+### Q: Q、K、V 分别代表什么？为什么需要三个投影？⭐⭐⭐⭐
 
 - **Q (Query)**：当前 token "我在找什么"
 - **K (Key)**：每个 token "我是什么"，用来和 Q 匹配
@@ -135,7 +135,7 @@ Q 和 K 的点积计算相关性（attention score），然后用这个 score �
 
 ## 六、为什么 Attention Score 除以 sqrt(d)
 
-### Q: Attention 公式里为什么除以 sqrt(d_k)？star:4
+### Q: Attention 公式里为什么除以 sqrt(d_k)？⭐⭐⭐⭐
 
 假设 Q 和 K 的每个元素独立同分布（均值 0，方差 1），则 $QK^T$ 的点积方差为 $d_k$。当 $d_k$ 很大时，点积值会很大，导致 softmax 输出趋近于 one-hot 分布，梯度接近为零。
 
@@ -148,7 +148,7 @@ $$\text{Var}(q \cdot k) = \sum_{i=1}^{d_k} \text{Var}(q_i k_i) = d_k$$
 
 ## 七、Causal Mask / Padding Mask
 
-### Q: causal mask 和 padding mask 有什么区别？为什么要区分？star:4
+### Q: causal mask 和 padding mask 有什么区别？为什么要区分？⭐⭐⭐⭐
 
 - **Causal Mask**：下三角矩阵（1 在下三角，0 在上三角），确保 token t 只能看到 t 及之前的 token
 - **Padding Mask**：标记哪些位置是 padding（通常用 0/1 或 True/False），padding 位置不参与 attention
@@ -161,7 +161,7 @@ $$\text{Var}(q \cdot k) = \sum_{i=1}^{d_k} \text{Var}(q_i k_i) = d_k$$
 
 ## 八、FFN / SwiGLU
 
-### Q: Transformer 的 FFN 做了什么？SwiGLU 是什么？star:4
+### Q: Transformer 的 FFN 做了什么？SwiGLU 是什么？⭐⭐⭐⭐
 
 FFN 对每个位置独立做非线性变换：
 $$FFN(x) = W_2 \cdot \text{Activation}(W_1 \cdot x + b_1) + b_2$$
@@ -185,7 +185,7 @@ $$\text{SwiGLU}(x) = (\text{Swish}(xW_1) \odot xW_3) W_2$$
 
 ## 九、Residual Connection / LayerNorm / RMSNorm / PreNorm / PostNorm
 
-### Q: 为什么需要 Residual Connection？PreNorm 和 PostNorm 哪个好？star:4
+### Q: 为什么需要 Residual Connection？PreNorm 和 PostNorm 哪个好？⭐⭐⭐⭐
 
 - **Residual Connection**：$y = F(x) + x$，让梯度可以直通，解决深层网络梯度消失/爆炸
 - **RMSNorm**：LayerNorm 的简化版，去除均值的归中操作，只做 scale，计算更快，效果相当。现代 LLM 普遍使用
@@ -216,7 +216,7 @@ LayerNorm vs RMSNorm 的核心差异：LayerNorm 做 $y = \frac{x-\mu}{\sigma} \
 
 ## 十、RoPE / ALiBi
 
-### Q: RoPE 是什么？它解决了什么问题？star:5
+### Q: RoPE 是什么？它解决了什么问题？⭐⭐⭐⭐⭐
 
 ![RoPE 旋转位置编码](images/RoPE.png)
 
@@ -252,7 +252,7 @@ Qwen3 使用 RoPE，MiniMind 配置中 `rope_theta=1,000,000`，且支持 YaRN �
 
 ## 十一、KV Cache
 
-### Q: KV Cache 是什么？为什么要 cache？star:5
+### Q: KV Cache 是什么？为什么要 cache？⭐⭐⭐⭐⭐
 
 自回归生成时，每次生成一个 token 都需要做 self-attention。如果没有 KV Cache，每次都要把之前所有 token 的 K、V 重新算一遍，导致 $O(n^2)$ 的重复计算。有 KV Cache 后，每次只需计算新 token 的 Q/K/V，之前的 K/V 直接从 cache 读取，计算量降为 $O(n)$。
 
@@ -294,7 +294,7 @@ $$\text{KV Cache} = 2 \times b \times n_{kv\_heads} \times L \times s \times d_{
 
 ## 十二、FlashAttention
 
-### Q: FlashAttention 为什么快？star:4
+### Q: FlashAttention 为什么快？⭐⭐⭐⭐
 
 FlashAttention 通过**算子融合和分块计算**来减少 HBM 读写：
 1. 传统 attention：把完整的 QK^T 矩阵写入 HBM -> 读回做 softmax -> 写回 -> 读回乘以 V（大量 HBM IO）
@@ -305,7 +305,7 @@ FlashAttention 通过**算子融合和分块计算**来减少 HBM 读写：
 
 ## 十三、长上下文为什么难
 
-### Q: 为什么 LLM 处理长上下文很难？star:4
+### Q: 为什么 LLM 处理长上下文很难？⭐⭐⭐⭐
 
 1. **Attention 复杂度**：Self-attention 的复杂度是 $O(n^2)$，序列翻倍，计算量翻四倍
 2. **KV Cache 显存**：随序列长度线性增长
@@ -332,7 +332,7 @@ MiniMind 项目 `model/transformer.py` 包含标准 Transformer 教学实现，�
 
 ## 十五、MoE (Mixture of Experts)
 
-### Q: MoE 架构的原理是什么？Expert / Router / Top-K routing 分别起什么作用？star:4
+### Q: MoE 架构的原理是什么？Expert / Router / Top-K routing 分别起什么作用？⭐⭐⭐⭐
 
 MoE 将 FFN 层替换为多个"专家"（Expert，各自独立的小 FFN），每个 token 只激活其中 Top-K 个（通常 K=2）。
 
@@ -341,7 +341,7 @@ MoE 将 FFN 层替换为多个"专家"（Expert，各自独立的小 FFN），�
 
 **为什么叫"稀疏激活"**：虽然总参数量大（多个专家），但每个 token 只激活一小部分参数，计算量远小于同等参数量的 Dense 模型。例如 Mixtral 8x7B 有 47B 总参数，但每个 token 只激活约 13B。
 
-### Q: MoE 训练的主要挑战是什么？Router 负载不均衡会造成什么后果？star:4
+### Q: MoE 训练的主要挑战是什么？Router 负载不均衡会造成什么后果？⭐⭐⭐⭐
 
 1. **负载不均衡**：如果 Router 把所有 token 分给同一个专家，其他专家"饿死"，模型退化为 Dense 模型。
 
@@ -361,7 +361,7 @@ $$\mathcal{L}_{aux} = \alpha \cdot N \sum_{i=1}^{N} f_i \cdot P_i$$
 
 ## 十六、蒸馏
 
-### Q: 知识蒸馏中 teacher model 怎么选？黑盒蒸馏和白盒蒸馏的区别？star:3
+### Q: 知识蒸馏中 teacher model 怎么选？黑盒蒸馏和白盒蒸馏的区别？⭐⭐⭐
 
 **Teacher 选择原则**：
 1. 同领域更强模型（如医学用 GPT-4/Claude 做 teacher）
@@ -379,7 +379,7 @@ $$\mathcal{L}_{aux} = \alpha \cdot N \sum_{i=1}^{N} f_i \cdot P_i$$
 
 **我的医学项目**：使DeepSeek-v4-pro 作为 teacher 生成高质量医学回答中筛选出 55,000 条高质量 SFT 数据（64.7% 保留率）。
 
-### Q: CoT 蒸馏有什么风险？应该蒸馏思维链还是只蒸馏答案？star:3
+### Q: CoT 蒸馏有什么风险？应该蒸馏思维链还是只蒸馏答案？⭐⭐⭐
 
 CoT 蒸馏的风险：
 1. **teacher 推理错误但答案正确**：Student 学到错误的推理路径
