@@ -82,9 +82,7 @@ DPO 解决的 RLHF 痛点：
 
 **Reward Model：不需要但隐含**。DPO 不需要显式训练 Reward Model，但它通过数学等价性隐含地将 policy model 的 logprob 差作为 reward：
 
-```
-r(x, y) = β · log[ π_θ(y|x) / π_ref(y|x) ]
-```
+$$r(x, y) = \beta \cdot \log\frac{\pi_\theta(y|x)}{\pi_{ref}(y|x)}$$
 
 这意味着 DPO 中 policy model 本身就在充当 Reward Model 的角色——它对 chosen 和 rejected 的相对评分就是隐式奖励。
 
@@ -100,26 +98,19 @@ Reference Model 通常选 SFT 模型，因为 SFT 模型已经学会了"给出�
 
 **最终公式**：
 
-```
-L_DPO(π_θ; π_ref) = -E_{(x, y_w, y_l) ~ D} [
-    log σ(
-        β · log [π_θ(y_w | x) / π_ref(y_w | x)]
-      - β · log [π_θ(y_l | x) / π_ref(y_l | x)]
-    )
-]
-```
+$$\mathcal{L}_{DPO}(\pi_\theta; \pi_{ref}) = -\mathbb{E}_{(x, y_w, y_l) \sim D}\left[\log \sigma\left(\beta \log \frac{\pi_\theta(y_w | x)}{\pi_{ref}(y_w | x)} - \beta \log \frac{\pi_\theta(y_l | x)}{\pi_{ref}(y_l | x)}\right)\right]$$
 
-其中 π_θ 是 Policy Model（当前正在训练的模型），π_ref 是 Reference Model（冻结的 SFT 模型），y_w 是 Chosen 回答，y_l 是 Rejected 回答，σ 是 Sigmoid 函数，β 是温度参数。
+其中 $\pi_\theta$ 是 Policy Model，$\pi_{ref}$ 是 Reference Model（冻结的 SFT 模型），$y_w$ 是 Chosen 回答，$y_l$ 是 Rejected 回答，$\sigma$ 是 Sigmoid 函数，$\beta$ 是温度参数。
 
-**直观理解**：记 reward_chosen = β · log[π_θ(y_w|x) / π_ref(y_w|x)]，reward_rejected = β · log[π_θ(y_l|x) / π_ref(y_l|x)]，margin = reward_chosen - reward_rejected，loss = -log σ(margin)。当 margin 很小（chosen 不比 rejected 更受偏好）时 loss 高，当 margin 很大（chosen 远好于 rejected）时 loss 趋近于 0。
+**直观理解**：记 $r_{chosen} = \beta \cdot \log\frac{\pi_\theta(y_w|x)}{\pi_{ref}(y_w|x)}$，$r_{rejected} = \beta \cdot \log\frac{\pi_\theta(y_l|x)}{\pi_{ref}(y_l|x)}$，$margin = r_{chosen} - r_{rejected}$，$loss = -\log \sigma(margin)$。当 margin 很小（chosen 不比 rejected 更受偏好）时 loss 高，当 margin 很大（chosen 远好于 rejected）时 loss 趋近于 0。
 
 **数学推导概要**（三步走）：
 
 **Step 1：Bradley-Terry 偏好模型**。假设人类偏好遵循 P(y_w ≻ y_l | x) = σ( r(x, y_w) - r(x, y_l) )，即 chosen 被偏好的概率等于两个隐式奖励 r 之差过 sigmoid。
 
-**Step 2：RLHF 优化目标**。标准 RLHF 目标是 max_π E_{y~π}[ r(x, y) ] - β · KL( π(·|x) || π_ref(·|x) )。这个带 KL 约束的优化问题有闭式解：π*(y|x) = (1/Z(x)) · π_ref(y|x) · exp( r(x, y) / β )，其中 Z(x) 是配分函数（只依赖 x 不依赖 y）。
+**Step 2：RLHF 优化目标**。标准 RLHF 目标是 $\max_\pi \mathbb{E}_{y\sim\pi}[ r(x, y) ] - \beta \cdot D_{KL}( \pi(\cdot|x) \parallel \pi_{ref}(\cdot|x) )$。这个带 KL 约束的优化问题有闭式解：$\pi^*(y|x) = \frac{1}{Z(x)} \pi_{ref}(y|x) \exp( r(x, y) / \beta )$，其中 $Z(x)$ 是配分函数。
 
-**Step 3：消去 Reward Model**。从闭式解反解 r：r(x, y) = β · log[ π*(y|x) / π_ref(y|x) ] + β · log Z(x)。代入 Bradley-Terry 偏好模型，Z(x) 项在差值中消去。将 π* 替换为当前训练的 π_θ，取负对数似然作为 loss，即得到 DPO loss。
+**Step 3：消去 Reward Model**。从闭式解反解 $r$：$r(x, y) = \beta \cdot \log\frac{\pi^*(y|x)}{\pi_{ref}(y|x)} + \beta \cdot \log Z(x)$。代入 Bradley-Terry 偏好模型，$Z(x)$ 项在差值中消去。将 π* 替换为当前训练的 π_θ，取负对数似然作为 loss，即得到 DPO loss。
 
 **关键**：Z(x) 在 chosen 和 rejected 的差值中消去是 DPO 推导最精妙的一步。如果 Z(x) 不能消去，DPO 就无法仅用 policy 的 logprob 来计算 loss。
 
@@ -144,7 +135,7 @@ $$\mathcal{L}_{DPO} = -\mathbb{E}\left[\log \sigma\left(\beta \log \frac{\pi_\th
 
 ### Q: Beta 参数怎么选？太大或太小会怎样？⭐⭐⭐
 
-Beta (β) 是 DPO loss 中唯一的关键超参数。它源于 RLHF 目标中的 KL 散度约束系数：max_π E[r(x, y)] - β · KL(π || π_ref)。
+Beta ($\beta$) 是 DPO loss 中唯一的关键超参数。它源于 RLHF 目标中的 KL 散度约束系数：$\max_\pi \mathbb{E}[r(x, y)] - \beta \cdot D_{KL}(\pi \parallel \pi_{ref})$。
 
 - **Beta 太大（β → +∞）**：KL 约束极强，policy 被强制贴近 reference，几乎不更新，DPO 基本退化。
 - **Beta 太小（β → 0）**：KL 约束极弱，policy 可以随意偏离 reference，可能过拟合偏好数据，出现 catastrophic forgetting，也可能对数据集的偏好噪声过拟合。
@@ -361,7 +352,7 @@ DPO 比 SFT 更吃显存，因为需要同时持有 policy model 和 reference m
 
 **核心机制**：DPO 优化的是"人类偏好"，而非"事实正确性"。人类偏好自信肯定的语气、详细有条理的回答、流畅专业的表达，但不一定偏好事实正确。如果 chosen 因为"看起来更专业"而被偏好，DPO 学到的是"说得很肯定 = 好"，模型学会对不准确的内容也说得很肯定，幻觉被强化。
 
-**数学直觉**：DPO 的隐式 reward r(x, y) = β · log[π_θ(y|x) / π_ref(y|x)]，不包含任何事实性校验。模型只需要让 logprob 变高就能获得更高的 reward。如果 chosen 中包含事实错误但语气自信、条理清晰，DPO 仍然会奖励这种模式。
+**数学直觉**：DPO 的隐式 reward $r(x, y) = \beta \cdot \log\frac{\pi_\theta(y|x)}{\pi_{ref}(y|x)}$，不包含任何事实性校验。模型只需要让 logprob 变高就能获得更高的 reward。如果 chosen 中包含事实错误但语气自信、条理清晰，DPO 仍然会奖励这种模式。
 
 **长尾问题更容易中招**：高频问题（如高血压、糖尿病）训练数据中 chosen 包含正确答案，DPO 学到正确方向。长尾问题（如罕见病、偏门药物）训练数据中 chosen 可能也有不准确之处（teacher 也不是完美的），但 chosen 的格式/语气/结构更好，DPO 学到的是"格式好 = 好"。测试时模型对不准确的回答也说得头头是道。
 
