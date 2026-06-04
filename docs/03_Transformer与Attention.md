@@ -163,23 +163,31 @@ $$\text{Var}(q \cdot k) = \sum_{i=1}^{d_k} \text{Var}(q_i k_i) = d_k$$
 
 ### Q: Transformer 的 FFN 做了什么？SwiGLU 是什么？⭐⭐⭐⭐
 
-FFN 对每个位置独立做非线性变换：
-$$FFN(x) = W_2 \cdot \text{Activation}(W_1 \cdot x + b_1) + b_2$$
+**FFN 的作用**：Attention 让 token 之间交换信息（"谁和谁相关"），FFN 对每个 token 独立做非线性变换（"这个 token 本身知道什么"）。Attention 负责"查字典"，FFN 负责"知识存储"。两者互补——Attention 建模 token 间关系，FFN 存储事实和模式。
 
-传统用 ReLU 或 GELU。现代 LLM 普遍用 SwiGLU：
-$$\text{SwiGLU}(x) = \text{Swish}(xW_1) \odot (xW_2)$$
+**为什么需要 FFN**：没有 FFN 的纯 Attention 模型表达能力不足——Attention 本质是线性加权，多层叠加也只是线性组合。FFN 的非线性激活提供了额外的表达能力，是 Transformer 能存储大量知识的关键。
 
-其中 Swish = $x \cdot \text{sigmoid}(\beta x)$。SwiGLU 效果比 ReLU/GELU 好，但参数量增加约 33%。
+**标准 FFN vs SwiGLU**：
 
-MiniMind 的配置中 `hidden_act='silu'`（即 Swish），是 SwiGLU 的基础。
+标准 FFN（两个权重矩阵）：
+$$\text{FFN}(x) = \text{GELU}(xW_1 + b_1) W_2 + b_2$$
+先升维到 $4 \cdot d_{model}$ → 激活 → 降维回 $d_{model}$。
 
-**SwiGLU 的完整三矩阵形式**（区别于标准 FFN 的两矩阵）：
+SwiGLU（三个权重矩阵 + 门控机制）：
+$$\text{SwiGLU}(x) = (\text{SiLU}(xW_{gate}) \odot xW_{up}) W_{down}$$
 
-$$\text{SwiGLU}(x) = (\text{Swish}(xW_1) \odot xW_3) W_2$$
+三个矩阵在 LLaMA/Qwen config 中的对应名称：
+- `gate_proj`（$W_{gate}$）：门控信号——决定"激活哪些维度"
+- `up_proj`（$W_{up}$）：待门控的内容——"需要被筛选的信息"
+- `down_proj`（$W_{down}$）：投影回原始维度
 
-其中 $\text{Swish}(x) = x \cdot \sigma(x)$（在 PyTorch 中为 `F.silu(x)`）。三个矩阵分别是 gate_proj($W_1$)、up_proj($W_3$)、down_proj($W_2$)。在 Qwen3 和 LLaMA 的 config 中对应 `gate_proj`、`up_proj`、`down_proj`——这三个名字就是 SwiGLU 的标配。
+**门控的直觉**：$W_{gate}$ 的输出经过 SiLU 得到一个 0~1 之间的"开关"，逐元素乘到 $W_{up}$ 的输出上。如果 gate=1，"这个维度的信息通过"；如果 gate≈0，"这个维度的信息被屏蔽"。这比 ReLU（粗暴截断负数）或 GELU（平滑但无选择性）更精细——模型可以**选择性地激活**不同维度。
 
-标准 FFN 中间维度为 $4 \cdot d_{model}$，SwiGLU 为 $\frac{8}{3} \cdot d_{model} \approx 2.67 \cdot d_{model}$。虽然看起来小了，但 SwiGLU 有三个权重矩阵（vs FFN 的两个），实际参数量相当。
+**为什么 SwiGLU 更好**：实验证明在相同计算量下 SwiGLU > GELU > ReLU。门控机制让 FFN 学会"根据上下文选择性激活知识"，而非对每个 token 无差别地做相同变换。这是现代 LLM（LLaMA、Qwen、DeepSeek）的标配。
+
+**参数量对比**：标准 FFN 中间维度 $4d$，参数量 $8d^2$；SwiGLU 中间维度 $\frac{8}{3}d \approx 2.67d$，参数量 $3 \times d \times 2.67d \approx 8d^2$——**参数量基本相同，但 SwiGLU 效果更好**。
+
+在 MiniMind 项目中 `hidden_act='silu'`，config 中的 `gate_proj/up_proj/down_proj` 就是 SwiGLU 的三矩阵。Qwen3-8B 同样使用 SwiGLU。
 
 ---
 
