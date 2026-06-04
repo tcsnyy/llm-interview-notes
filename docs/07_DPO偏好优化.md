@@ -6,7 +6,7 @@
 
 ### 1 分钟版
 
-DPO（Direct Preference Optimization）是一种无需显式训练 Reward Model 的对齐方法。核心思路是：将 RLHF 中 "先训 Reward Model 再 PPO 优化" 的两阶段流程，转化为一个直接在偏好数据上优化 policy 的分类问题。DPO loss 本质上是让模型对 chosen 回答赋予更高的隐式奖励，对 rejected 回答赋予更低的奖励，同时用 reference model（通常是 SFT 模型）的 logprob 做 KL 约束。在我的医学项目中，chosen 使用 Teacher 模型（MiMo-v2.5-pro）的高质量答案，rejected 使用 SFT 模型自己采样的低质量回答，约 10K 对数据在 SFT LoRA checkpoint 上继续训练，beta=0.1、loss_type=sigmoid。DPO 后模型在多数医学问答上表现提升，但部分长尾问题出现了更自信的幻觉，最终引入 Safety-RAG 修复。
+DPO（Direct Preference Optimization）是一种无需显式训练 Reward Model 的对齐方法。核心思路是：将 RLHF 中 "先训 Reward Model 再 PPO 优化" 的两阶段流程，转化为一个直接在偏好数据上优化 policy 的分类问题。DPO loss 本质上是让模型对 chosen 回答赋予更高的隐式奖励，对 rejected 回答赋予更低的奖励，同时用 reference model（通常是 SFT 模型）的 logprob 做 KL 约束。在我的医学项目中，chosen 使用 Teacher 模型（DeepSeek-v4-pro）的高质量答案，rejected 使用 SFT 模型自己采样的低质量回答，约 10K 对数据在 SFT LoRA checkpoint 上继续训练，beta=0.1、loss_type=sigmoid。DPO 后模型在多数医学问答上表现提升，但部分长尾问题出现了更自信的幻觉，最终引入 Safety-RAG 修复。
 
 ### 3 分钟版
 
@@ -16,7 +16,7 @@ DPO 是 Stanford 在 2023 年提出的方法，发表于 NeurIPS 2023。它统�
 
 DPO 的巧妙之处在于数学推导：将 Bradley-Terry 模型下的最优 policy 显式解代入偏好优化目标，消去 Reward Model，得到一个仅依赖 policy model 和 reference model 输出 logprob 的 loss 函数。这个 loss 就是一个二分类交叉熵——最大化 chosen 相对于 rejected 的对数优势。
 
-在我的医学项目中，数据构造方式有其特殊性：chosen 由 MiMo-v2.5-pro（一个更大的医学 LLM）生成，代表"应该被学习的理想答案"；rejected 由 SFT 后的 Qwen3-8B 自身采样，代表"当前模型的真实错误倾向"。这种构造方式使 rejected 的分布与 policy model 当前输出分布接近，梯度信号更有意义——不是奖励一个遥不可及的"完美答案"，而是纠正模型自己会犯的实际错误。
+在我的医学项目中，数据构造方式有其特殊性：chosen 由 DeepSeek-v4-pro 作为 teacher 生成高质量医学回答——不是简单地让学生抄标准答案，而是纠正模型自己会犯的实际错误。
 
 DPO 训练后效果提升明显，但在长尾问题（罕见病、偏门药物副作用）上出现了更自信的幻觉——模型学会了"说得更肯定"但事实是错误的。根本原因是 DPO 优化的是"人类偏好"而非"事实正确性"。最终引入 Safety-RAG 在推理阶段做事实性校验来弥补。
 
@@ -231,13 +231,13 @@ DPO 训练中一个常见陷阱：模型可能学会"生成更长的回答"而�
 
 **Chosen 用 Teacher 模型的好处**：
 
-在医学 LLM Teacher 项目中，Teacher 是 MiMo-v2.5-pro，一个更大、更强的商业化医学 LLM。用 Teacher 而非人工标注的好处：质量高且稳定、可大规模生成（10K+）、风格统一、经过医学训练、完全可复现。
+在医学 LLM Teacher 项目中，Teacher 是 DeepSeek-v4-pro，一个更大、更强的商业化医学 LLM。用 Teacher 而非人工标注的好处：质量高且稳定、可大规模生成（10K+）、风格统一、经过医学训练、完全可复现。
 
 深层好处：chosen 的质量上限决定了 DPO 的上限，Teacher 模型确定了"理想回答"的方向；DPO 实际上将 Teacher 模型的知识偏好通过偏好比较的方式迁移到 Student（Qwen3-8B）；本质是一种知识蒸馏。
 
 潜在风险：Teacher 模型自身的 bias 会传递到 Student，如果 Teacher 在某些领域也有错误 Student 会学到这些错误，Teacher 的风格可能与最终期望的风格不完全一致。
 
-> **核心总结**："我们用 MiMo-v2.5-pro 作为 Teacher 来生成 chosen 答案，本质是一种知识蒸馏。chosen 用 Teacher 答案，rejected 用 SFT 模型采样，DPO 的优化方向就是让 8B 模型往 Teacher 的方向靠。这本质上是让一个小模型学习一个大模型的偏好分布。rejected 用 SFT 模型自身采样生成，这是一个'自我对抗'的数据构造策略——SFT 模型采样出的 rejected 代表了它现阶段容易犯的错误，DPO 在 loss 优化过程中逐步修正自己最真实的弱点。"
+> **核心总结**："我们使用 DeepSeek-v4-pro 生成 chosen、SFT 模型采样 rejected，这是一个'自我对抗'的数据构造策略——SFT 模型采样出的 rejected 代表了它现阶段容易犯的错误，DPO 在 loss 优化过程中逐步修正自己最真实的弱点。"
 
 ---
 
@@ -387,7 +387,7 @@ DPO 不一定提升安全性，甚至可能降低安全性。DPO 优化的是"�
 
 分三步走：
 
-**第一步（Chosen 质量控制）**：Teacher 模型（MiMo-v2.5-pro）生成 chosen，然后人工抽查 5-10% 确保没有明显的事实错误、伦理问题或糟糕格式。规则过滤包括：长度 >= 50 tokens、包含专业术语、无明显格式错误。
+**第一步（Chosen 质量控制）**：Teacher 模型（DeepSeek-v4-pro）生成 chosen，然后人工抽查 5-10% 确保没有明显的事实错误、伦理问题或糟糕格式。规则过滤包括：长度 >= 50 tokens、包含专业术语、无明显格式错误。
 
 **第二步（Rejected 质量控制）**：SFT 模型采样生成（temperature=0.7~0.8），规则过滤：长度 20-1000 tokens、不包含特殊控制 token、格式完整性。质量过滤：不能是纯通用万能回答、不能是纯格式错误（太容易区分）。去重：与 chosen 的相似度不能太低也不能太高。
 
@@ -403,7 +403,7 @@ DPO 不一定提升安全性，甚至可能降低安全性。DPO 优化的是"�
 
 1. **数据分布不均**：高频问题 (~7K 对) 的 chosen 质量高、rejected 有明显错误；长尾问题 (~3K 对) 的 chosen 质量参差不齐（teacher 模型对罕见病也可能不完美），rejected 和 chosen 的差距主要是"格式"而非"事实"，DPO 学到的是"输出更详细的长回答"而非"纠正事实"。
 
-2. **Teacher 模型本身在长尾问题上并不完美**：MiMo-v2.5-pro 虽然很强，但对罕见病的了解可能也不全面。如果 chosen 中包含不准确信息，DPO 合法地把"不准确但格式好的回答"当作偏好目标。
+2. **Teacher 模型本身在长尾问题上并不完美**：DeepSeek-v4-pro 虽然很强，但对罕见病的了解可能也不全面。如果 chosen 中包含不准确信息，DPO 合法地把"不准确但格式好的回答"当作偏好目标。
 
 3. **DPO 的隐式奖励只依赖 logprob**：没有任何机制检查"chosen 是否事实正确"。模型可以通过"说得更详细、更肯定"来获得更高 reward，无需确保内容是正确的。
 
@@ -976,7 +976,7 @@ if __name__ == "__main__":
 │   rejected: 用 SFT 模型采样 → 反映真实弱点 → 梯度信号有意义                   │
 │                                                                      │
 │ 【项目配置（医学 LLM Teacher）】                                         │
-│   chosen: MiMo-v2.5-pro 生成                                           │
+│   chosen: DeepSeek-v4-pro 生成                                           │
 │   rejected: SFT 模型自身采样（temperature 0.7~0.8）                      │
 │   beta: 0.1, loss_type: sigmoid                                       │
 │   ~10K DPO 对, 从 SFT LoRA checkpoint 继续训练                           │

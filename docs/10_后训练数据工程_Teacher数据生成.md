@@ -30,7 +30,7 @@
 │  │  SFT train (55K) + val (2K)                                  │   │
 │  │         │                                                    │   │
 │  │         ▼                                                    │   │
-│  │  Teacher Model: MiMo-v2.5-pro                                │   │
+│  │  Teacher Model: DeepSeek-v4-pro                                │   │
 │  │  - 专用医学 Teacher Prompt                                    │   │
 │  │  - 安全约束指令                                               │   │
 │  │  - 结构化输出格式要求                                          │   │
@@ -43,7 +43,7 @@
 │  ┌─────────────────────────────────────────────────────────────┐   │
 │  │ Step 2: Judge 严格过滤                                       │   │
 │  │                                                              │   │
-│  │  Judge: MiMo-v2.5-pro (与 Teacher 同模型，不同 prompt)        │   │
+│  │  Judge: MiMo-v2.5-pro（与 Teacher 不同模型，专门设计 Judge prompt）        │   │
 │  │  评分维度及权重：                                              │   │
 │  │    - correctness  x 1.0  (医学正确性)                         │   │
 │  │    - safety       x 1.0  (安全性)                             │   │
@@ -157,7 +157,7 @@
 | Synthetic / Self-Instruct | 中 | 低 | Alpaca, WizardLM |
 | 公开数据集直接使用 | 参差不齐 | 零 | HuatuoGPT2 原始数据 |
 
-本项目选择 "Teacher 生成 + Judge 自动过滤" 路线：Teacher 用 MiMo-v2.5-pro（强医学大模型），Judge 用同模型但用专门的评分 prompt，过滤用多维度自动打分 + 阈值截断。
+本项目选择 "Teacher 生成 + Judge 自动过滤" 路线：Teacher 用 DeepSeek-v4-pro（强推理大模型），Judge 用 MiMo-v2.5-pro 专门的评分 prompt，过滤用多维度自动打分 + 阈值截断。
 
 不直接用原始 HuatuoGPT2 数据的原因：回答风格和时效性不符、一致性不可控（原始数据可能由不同版本 GPT-4 生成）、不可定制（无法控制输出风格和安全约束）、缺少 Chain-of-Thought 推理过程。
 
@@ -165,7 +165,7 @@
 
 ### Q: Teacher 模型怎么选的？Prompt 怎么设计的？安全约束有哪些？⭐⭐⭐⭐⭐
 
-**Teacher 模型选择（为什么是 MiMo-v2.5-pro）**：医学专长（MiMo 系列在医疗 QA 上有专门优化）、中文能力（中英双语适合中文医学场景）、指令遵循能力强（在 structured output 场景下表现好）、与 Judge 同模型（保持评分标准与生成标准的一致性）。
+**Teacher 模型选择（为什么是 DeepSeek-v4-pro）**：推理能力强（DeepSeek-v4-pro 在医学推理和知识准确性上表现出色）、中文能力（中英双语适合中文医学场景）、指令遵循能力强（在 structured output 场景下表现好）、与 Judge 分开选型（Teacher 用 DeepSeek 保证生成质量，Judge 用 MiMo 独立评估）。
 
 **Teacher Prompt 设计示例**：
 
@@ -557,7 +557,7 @@ LLM 生成回答 + Safety-RAG 检索
 8. **Split**：SFT train / SFT val / DPO pool / Eval 严格隔离，避免数据泄漏
 9. **最终质检**：人工抽检 1-5%，检查格式、安全性、一致性
 
-**我的项目实例如下**：HuatuoGPT2 142K 原始数据 → 按 55K/2K/13K/2K 四片划分 → MiMo teacher 生成 80K 条 → Judge 严格过滤(correctness=safety=hallucination=5, weighted≥4.8) → 11,393 条高质量 SFT 数据（73.6% 保留率）。
+**我的项目实例如下**：HuatuoGPT2 142K 原始数据 → 按 55K/2K/13K/2K 四片划分 → DeepSeek-v4-pro 作为 teacher 生成 80K 条 → Judge 严格过滤(correctness=safety=hallucination=5, weighted≥4.8) → 11,393 条高质量 SFT 数据（73.6% 保留率）。
 
 ### Q: SFT 数据中是否应该包含拒答样本？比例多少合适？star:3
 
@@ -613,7 +613,7 @@ Hard sample mining 从模型"容易出错"的样本中筛选训练数据，让�
 3. **多样性坍缩**：多轮自演化后输出分布变窄，失去创造力
 4. **数据污染**：模型生成的内容可能包含自身训练数据的残留信息
 
-**缓解**：每轮自演化加入外部高质量数据（人工标注/强 teacher 生成）作为"锚点"，防止模型漂移。我的项目中 MiMo teacher 就是外部锚点——不是用 SFT 模型自己生成的数据训练自己。
+**缓解**：每轮自演化加入外部高质量数据（人工标注/强 teacher 生成）作为"锚点"，防止模型漂移。我的项目中 DeepSeek-v4-pro 作为 teacher 就是外部锚点——不是用 SFT 模型自己生成的数据训练自己。
 
 
 ---
@@ -628,7 +628,7 @@ Hard sample mining 从模型"容易出错"的样本中筛选训练数据，让�
   SFT val:       2,000  → 独立验证
   DPO pool:     13,000  → Teacher(chosen) + SFT模型采样(rejected)
   DPO eval:      2,000  → 独立评估
-【Teacher】MiMo-v2.5-pro, 医学专用 prompt, 含安全约束
+【Teacher】DeepSeek-v4-pro, 医学专用 prompt, 含安全约束
 【Judge 过滤】三维度: correctness/safety/hallucination 各>=4, weighted>=4.8
               清洗后通过率 73.6%, 最终 11,393 条
 【DPO rejected 为什么用 SFT 模型采样】
@@ -658,7 +658,7 @@ Hard sample mining 从模型"容易出错"的样本中筛选训练数据，让�
 
 - [ ] 数据从哪来？HuatuoGPT2-SFT-GPT4-140K
 - [ ] 为什么不用原始数据？风格/安全/一致性不可控
-- [ ] Teacher 是谁？MiMo-v2.5-pro
+- [ ] Teacher 是谁？DeepSeek-v4-pro
 - [ ] Judge 怎么打分？三维度各 >=4, weighted >=4.8
 - [ ] 最终 SFT 多少条？11,393（不是 57K 也不是 140K）
 - [ ] DPO rejected 怎么来的？SFT 模型 sampling (temp=0.7)
