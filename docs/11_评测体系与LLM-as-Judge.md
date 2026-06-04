@@ -1,5 +1,7 @@
 # 11. 评测体系与 LLM-as-Judge
 
+![LLM-as-Judge 评测体系](images/LLM-as-Judge%E8%AF%84%E6%B5%8B%E4%BD%93%E7%B3%BB.png)
+
 ---
 
 ## 目录

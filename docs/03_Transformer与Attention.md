@@ -6,6 +6,8 @@
 
 ### Q: 画出 Transformer 的结构图，并解释每个组件的功能。star:5
 
+![Transformer 架构图](images/Transformer%E6%95%B4%E4%BD%93%E6%9E%B6%E6%9E%84%E5%9B%BE.jpg)
+
 Transformer 由 Encoder 和 Decoder 两部分组成（但现在 LLM 只用 Decoder 部分）。核心组件：
 
 1. **Input Embedding**：将 token ID 映射为向量
@@ -78,6 +80,8 @@ $$\text{Attention}(Q, K, V) = \text{softmax}\left(\frac{QK^T}{\sqrt{d_k}}\right)
 ## 四、MHA / MQA / GQA 区别
 
 ### Q: MHA、MQA、GQA、MLA 分别是什么？为什么现在都用 GQA？star:5
+
+![MHA MQA GQA MLA 对比图](images/MHA%20MQA%20GQA%20MLA%E5%AF%B9%E6%AF%94%E5%9B%BE%20.png)
 
 | 类型 | 全称 | Q头数 | K/V头数 | KV Cache | 效果 | 代表模型 |
 |------|------|-------|---------|----------|------|---------|
@@ -164,6 +168,8 @@ MiniMind 使用 RMSNorm + PreNorm 结构。
 ## 十、RoPE / ALiBi
 
 ### Q: RoPE 是什么？它解决了什么问题？star:5
+
+![RoPE 旋转位置编码](images/RoPE.png)
 
 **RoPE (Rotary Position Embedding)** 是目前最主流的位置编码方式。它通过旋转矩阵将位置信息编码到 Q 和 K 中，使得内积只依赖于**相对位置**。
 

@@ -20,6 +20,8 @@ DPO 阶段直接从 SFT LoRA checkpoint 加载继续训练，生成新的 adapte
 
 ### Q: PEFT 是什么？LoRA 的核心思想与公式是什么？⭐⭐⭐⭐⭐
 
+![LoRA 低秩分解示意图](images/LoRA%E4%BD%8E%E7%A7%A9%E5%88%86%E8%A7%A3%E7%A4%BA%E6%84%8F%E5%9B%BE.png)
+
 PEFT（Parameter-Efficient Fine-Tuning）是一类在微调大模型时**只更新极少量参数**的方法总称。与 Full Fine-Tuning（全部参数参与梯度计算与更新）不同，PEFT 通过注入可训练的 adapter 模块、prefix embeddings、或低秩分解矩阵，在保持模型主体冻结的前提下实现任务适配。
 
 PEFT 家族的典型代表：

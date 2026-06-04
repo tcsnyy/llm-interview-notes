@@ -24,6 +24,8 @@ DPO 训练后效果提升明显，但在长尾问题（罕见病、偏门药物�
 
 ### Q: DPO 是什么？它解决了 RLHF 的什么问题？⭐⭐⭐⭐⭐
 
+![DPO 训练流程图](images/DPO%E8%AE%AD%E7%BB%83%E6%B5%81%E7%A8%8B%E5%9B%BE.png)
+
 DPO（Direct Preference Optimization）是一种直接使用人类偏好数据来优化语言模型的方法，它将 RLHF 的 Reward Model 训练和 PPO 策略优化两个阶段合并为一个稳定的监督式 loss，无需显式训练 Reward Model。
 
 直觉理解：

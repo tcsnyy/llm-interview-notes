@@ -1,5 +1,9 @@
 # 12. RAG 与 Safety-RAG 详细八股
 
+![Safety-RAG 端到端流程与五层检索架构](images/Safety-RAG%20%E7%AB%AF%E5%88%B0%E7%AB%AF%E6%B5%81%E7%A8%8B%E4%B8%8E%E4%BA%94%E5%B1%82%E6%A3%80%E7%B4%A2%E6%9E%B6%E6%9E%84.png)
+
+![Agentic RAG vs 普通RAG对比图](images/Agentic%20RAG%20vs%20%E6%99%AE%E9%80%9ARAG%E5%AF%B9%E6%AF%94%E5%9B%BE.png)
+
 ---
 
 ## 文档总目录
