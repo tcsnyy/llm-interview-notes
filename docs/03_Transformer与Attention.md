@@ -96,6 +96,29 @@ MLA 更进一步：将 K 和 V 先压缩到一个低维潜在空间 $c_t = W_{DK
 
 现在模型普遍用 GQA：Qwen3、Llama 3、Mistral 等。MLA 是 DeepSeek-V2/V3 的核心创新。MiniMind 项目中 `num_key_value_heads=2`（Q 头=8），使用了 GQA。
 
+**GQA 的代码级实现**（以 MiniMind 为例，num_attention_heads=8, num_key_value_heads=2）：
+
+```python
+# [batch, seq_len, d_model] -> Q/K/V 投影
+q = self.q_proj(x).view(batch, seq_len, self.num_heads, self.head_dim).transpose(1, 2)
+# q: [batch, 8, seq_len, head_dim]
+
+k = self.k_proj(x).view(batch, seq_len, self.num_kv_heads, self.head_dim).transpose(1, 2)
+v = self.v_proj(x).view(batch, seq_len, self.num_kv_heads, self.head_dim).transpose(1, 2)
+# k,v: [batch, 2, seq_len, head_dim]  <- 只有2头
+
+# 关键步骤：将 KV 头数扩展到和 Q 一致
+k = k.repeat_interleave(self.num_heads // self.num_kv_heads, dim=1)
+v = v.repeat_interleave(self.num_heads // self.num_kv_heads, dim=1)
+# k,v: [batch, 8, seq_len, head_dim]  <- 扩展后8头
+
+# 之后和标准 MHA 一样
+attn = F.softmax(q @ k.transpose(-2, -1) / math.sqrt(self.head_dim), dim=-1)
+out = (attn @ v).transpose(1, 2).reshape(batch, seq_len, d_model)
+```
+
+KV Cache 从 8 头降至 2 头，显存节省 75%，推理速度提升明显。
+
 ---
 
 ## 五、Q/K/V 作用
@@ -150,6 +173,14 @@ $$\text{SwiGLU}(x) = \text{Swish}(xW_1) \odot (xW_2)$$
 
 MiniMind 的配置中 `hidden_act='silu'`（即 Swish），是 SwiGLU 的基础。
 
+**SwiGLU 的完整三矩阵形式**（区别于标准 FFN 的两矩阵）：
+
+$$\text{SwiGLU}(x) = (\text{Swish}(xW_1) \odot xW_3) W_2$$
+
+其中 $\text{Swish}(x) = x \cdot \sigma(x)$（在 PyTorch 中为 `F.silu(x)`）。三个矩阵分别是 gate_proj($W_1$)、up_proj($W_3$)、down_proj($W_2$)。在 Qwen3 和 LLaMA 的 config 中对应 `gate_proj`、`up_proj`、`down_proj`——这三个名字就是 SwiGLU 的标配。
+
+标准 FFN 中间维度为 $4 \cdot d_{model}$，SwiGLU 为 $\frac{8}{3} \cdot d_{model} \approx 2.67 \cdot d_{model}$。虽然看起来小了，但 SwiGLU 有三个权重矩阵（vs FFN 的两个），实际参数量相当。
+
 ---
 
 ## 九、Residual Connection / LayerNorm / RMSNorm / PreNorm / PostNorm
@@ -162,6 +193,24 @@ MiniMind 的配置中 `hidden_act='silu'`（即 Swish），是 SwiGLU 的基础�
 - **PostNorm**（先 Attention/FFN 再 Norm）：效果略好但训练不稳定，不太用了
 
 MiniMind 使用 RMSNorm + PreNorm 结构。
+
+**RMSNorm 代码实现**：
+
+```python
+# RMSNorm: [batch, seq_len, dim] -> [batch, seq_len, dim]
+class RMSNorm(nn.Module):
+    def __init__(self, dim, eps=1e-6):
+        super().__init__()
+        self.weight = nn.Parameter(torch.ones(dim))  # 可学习的 scale
+        self.eps = eps
+
+    def forward(self, x):
+        # 只做 scaling，不做 centering
+        rms = torch.sqrt(torch.mean(x.float() ** 2, dim=-1, keepdim=True))
+        return (x / (rms + self.eps)) * self.weight
+```
+
+LayerNorm vs RMSNorm 的核心差异：LayerNorm 做 $y = \frac{x-\mu}{\sigma} \cdot \gamma + \beta$（减均值、除标准差、scale、shift），RMSNorm 简化为 $y = \frac{x}{\text{RMS}(x)} \cdot \gamma$（只 scale，去掉 centering 和 bias）。实验证明在 Transformer 中去均值操作并非必需，RMSNorm 速度更快（省一次 reduce 和减法），现代 LLM 普遍使用。
 
 ---
 
@@ -210,6 +259,36 @@ Qwen3 使用 RoPE，MiniMind 配置中 `rope_theta=1,000,000`，且支持 YaRN �
 **代价**：KV Cache 占用显存。对于 8B 模型，KV Cache 可能占用几 GB 到几十 GB（取决于 batch size 和序列长度）。
 
 在我的项目中，vLLM 部署使用 PagedAttention 管理 KV Cache；压测时 TTFT 由 prefill 决定，TPOT 由 decode + KV Cache 决定。
+
+**MiniMind 中的 KV Cache 推理实现**：
+
+```python
+# 简化的自回归生成 + KV Cache 循环
+past_kv = None
+generated = []
+for _ in range(max_new_tokens):
+    if past_kv is None:
+        # Prefill 阶段：一次性编码全部 prompt，缓存所有层的 K/V
+        logits, past_kv = model(input_ids, past_key_values=None)
+    else:
+        # Decode 阶段：只计算新 token，concat 已有 K/V
+        logits, past_kv = model(input_ids[:, -1:], past_key_values=past_kv)
+    next_token = logits[:, -1:].argmax(dim=-1)
+    generated.append(next_token)
+    input_ids = torch.cat([input_ids, next_token], dim=-1)
+    if next_token == eos_token_id:
+        break
+```
+
+**KV Cache 显存估算公式**（MiniMind 104M, FP16）：
+
+$$\text{KV Cache} = 2 \times b \times n_{kv\_heads} \times L \times s \times d_{head} \times 2\text{ bytes}$$
+
+- 2（K + V）× batch × 2 KV头 × 8层 × 序列长度 × 64 head_dim × 2 bytes(FP16)
+- 当 s=2048, b=1：约 8.4 MB
+- 当 s=32768（最大长度）：约 134 MB
+
+在长文本或高并发场景下，KV Cache 往往比模型权重更容易成为显存瓶颈。PagedAttention（vLLM）正是为了解决这个问题。
 
 ---
 
@@ -298,7 +377,7 @@ $$\mathcal{L}_{aux} = \alpha \cdot N \sum_{i=1}^{N} f_i \cdot P_i$$
 | 优点 | 不依赖 teacher 内部结构 | 信息量更大，效果更好 |
 | 缺点 | 信息损失大 | 需要 teacher 开源或能内部访问 |
 
-**我的医学项目**：使用 MiMo-v2.5-pro API 做 teacher，是黑盒蒸馏——只能获取最终文本，通过 Judge 过滤保证质量，从 85K 条原始生成中筛选出 55,000 条高质量 SFT 数据（64.7% 保留率）。
+**我的医学项目**：使DeepSeek-v4-pro 作为 teacher 生成高质量医学回答中筛选出 55,000 条高质量 SFT 数据（64.7% 保留率）。
 
 ### Q: CoT 蒸馏有什么风险？应该蒸馏思维链还是只蒸馏答案？star:3
 
