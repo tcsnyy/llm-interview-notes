@@ -615,6 +615,39 @@ Hard sample mining 从模型"容易出错"的样本中筛选训练数据，让�
 
 **缓解**：每轮自演化加入外部高质量数据（人工标注/强 teacher 生成）作为"锚点"，防止模型漂移。我的项目中 DeepSeek-v4-pro 作为 teacher 就是外部锚点——不是用 SFT 模型自己生成的数据训练自己。
 
+---
+
+### Q: 本项目是 OPD 吗？普通 Teacher Distillation 和 OPD 有什么区别？⭐⭐⭐⭐⭐
+
+**普通 Teacher Distillation（本项目做法）是离线的 teacher answer imitation**：
+1. Teacher 对 prompt 生成答案（离线，teacher 看不到 student 的回答）
+2. 用 (prompt, teacher_answer) 做 SFT
+3. 用 (prompt, teacher_answer, student_answer) 构造 DPO 对
+
+整个过程中 **teacher 从未看过 student 自己的回答**，teacher 的监督信号是"无条件的"——不管 student 写成什么样，teacher 只给出自己认为最好的答案。
+
+**OPD（On-Policy Distillation）是在线的 teacher 对 student rollout 的监督**：
+1. **Student 先生成自己的回答**（rollout / on-policy sample）
+2. **Teacher 对 student 的回答提供监督**：可以是打分、改写、critique、提供更好的版本
+3. 用 (prompt, student_answer, teacher_feedback) 训练 student
+
+核心区别：**OPD 的训练数据分布是 student 自己的输出分布（on-policy），而普通 SFT 的训练数据分布是 teacher 的输出分布（off-policy）**。
+
+| 维度 | 普通 Teacher Distillation（本项目） | OPD |
+|------|--------------------------------------|-----|
+| 数据来源 | Teacher 独立生成答案 | Student 先生成，Teacher 再监督 |
+| 数据分布 | Teacher 的输出分布（off-policy） | Student 的输出分布（on-policy） |
+| Teacher 是否看到 Student 回答 | 否 | 是 |
+| 训练信号 | "模仿 teacher 的好答案" | "在你自己的答案基础上改进" |
+| 需要在线采样 | 否 | 是（每轮训练前 student 需要 rollout） |
+| 工程复杂度 | 低（可离线批处理） | 高（需要 student 在线生成 + teacher 在线评分） |
+
+**本项目不是严格 OPD**：Teacher（DeepSeek-v4-pro）在训练前一次性生成数据，不看 student 的输出。DPO 的 rejected 虽然来自 SFT 模型采样（有一定 on-policy 性质），但 chosen 仍然来自 teacher 的离线生成。
+
+**面试保守说法**："我理解 OPD 的思想——让 teacher 对 student 的实时输出做反馈，消除离线数据的分布偏移。我的项目中 teacher 数据生成是 offline 的，但后续可以升级为 Safety-OPD：student 生成医学回答 → RAG-grounded teacher 对 student 回答进行安全评分和改写 → 用改写后的版本训练 student。这样安全约束从推理时的后处理变成了训练时的 teacher 反馈。"
+
+> **详细 OPD 变体、对比、面试问答** 见 → `18_当前热点与趋势_2025_2026.md` 第 4 节
+
 
 ---
 

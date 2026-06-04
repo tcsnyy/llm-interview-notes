@@ -360,19 +360,19 @@
 
 ### Card 086
 **Q:** 医学 LLM Teacher 项目的完整 pipeline？
-**A:** Teacher 数据生成 (Qwen3-72B) → 55K SFT (QLoRA) → 10K DPO → LLM-as-Judge 评测 → DPO 后发现医疗长尾幻觉 → Safety-RAG 修复 → vLLM 部署。关键发现：DPO 后幻觉增加，Safety-RAG 修复后幻觉下降 66.7%。
+**A:** Teacher 数据生成 (DeepSeek-v4-pro) → 55K SFT (QLoRA) → 10K DPO → LLM-as-Judge 评测 → DPO 后发现医疗长尾幻觉 → Safety-RAG 修复 → vLLM 部署。关键发现：DPO 后幻觉增加，Safety-RAG 修复后幻觉下降 66.7%。
 
 ### Card 087
 **Q:** 为什么选 Qwen3-8B 作为基座模型？
-**A:** 1) GQA 机制推理效率高；2) 中文能力同规模 SOTA（中文医疗场景核心需求）；3) 8B 规模在前 4 张 A100/4090 上可完成全流程训练。LLaMA 中文 tokenizer 效率低约 30%。
+**A:** 1) GQA 机制推理效率高；2) 中文能力同规模 SOTA（中文医疗场景核心需求）；3) 8B 规模在单张 RTX 5090 32GB 上可完成全流程训练。LLaMA 中文 tokenizer 效率低约 30%。
 
 ### Card 088
 **Q:** 55K SFT 数据怎么来的？
-**A:** Teacher 模型 Qwen3-72B 生成 + 人工筛选。覆盖问诊、检查解读、用药咨询、健康科普 4 个场景。数据多样性通过：不同 temperature 采样 + 多 prompt 模板 + 医疗知识库引导生成。人工抽检 10% 保证质量。
+**A:** Teacher 模型 DeepSeek-v4-pro 生成 + 人工筛选。覆盖问诊、检查解读、用药咨询、健康科普 4 个场景。数据多样性通过：不同 temperature 采样 + 多 prompt 模板 + 医疗知识库引导生成。人工抽检 10% 保证质量。
 
 ### Card 089
 **Q:** SFT 训练的详细参数？
-**A:** QLoRA r=16, alpha=32, target_modules 全部 attention+FFN 层；lr=5e-5 cosine schedule，batch_size=4 (micro_batch)×4 (accumulation)=16 effective；epoch=3；max_length=2048；bf16 混合精度；2×4090 24G。
+**A:** QLoRA r=16, alpha=32, target_modules 全部 attention+FFN 层；lr=5e-5 cosine schedule，batch_size=4 (micro_batch)×4 (accumulation)=16 effective；epoch=1；max_length=2048；bf16 混合精度；RTX 5090 32GB。
 
 ### Card 090
 **Q:** 10K DPO 偏好数据怎么构造？
@@ -384,7 +384,7 @@
 
 ### Card 092
 **Q:** LLM-as-Judge 评测体系的三维度和权重？
-**A:** 医学准确性 (40%)：回答是否与临床知识一致；安全性 (35%)：是否避免处方建议和不恰当确定性表述；完整性 (25%)：是否满足用户真实需求。judge 使用 Qwen3-72B，与人工 Spearman 相关系数 accuracy 0.78，safety 0.62。
+**A:** 医学准确性 (40%)：回答是否与临床知识一致；安全性 (35%)：是否避免处方建议和不恰当确定性表述；完整性 (25%)：是否满足用户真实需求。judge 使用 DeepSeek-v4-pro，与人工 Spearman 相关系数 accuracy 0.78，safety 0.62。
 
 ### Card 093
 **Q:** DPO 后幻觉问题的具体表现？
@@ -408,15 +408,15 @@
 
 ### Card 098
 **Q:** vLLM 部署的配置和性能？
-**A:** 单卡 4090, max-model-len=4096, gpu-memory-utilization=0.9, 使用 PagedAttention + continuous batching。支持 10+ 并发请求，平均延迟约 1.5 秒/token。兼容 OpenAI API 格式，便于集成。
+**A:** 单卡 RTX 5090 32GB, max-model-len=4096, gpu-memory-utilization=0.9, 使用 PagedAttention + continuous batching。支持 10+ 并发请求，平均延迟约 1.5 秒/token。兼容 OpenAI API 格式，便于集成。
 
 ### Card 099
 **Q:** 项目训练各阶段的耗时和硬件？
-**A:** SFT (QLoRA): 2×4090 24G, 55K 数据, 3 epoch, ~12 小时；DPO: 2×4090, 10K 数据, 1 epoch, ~4 小时；Safety-RAG: 检索验证约增加 500ms 推理延迟。总训练时长约 16 小时，可行性强。
+**A:** SFT (QLoRA): RTX 5090 32GB, 55K 数据, 1 epoch, ~4 小时；DPO: RTX 5090 32GB, 10K 数据, 1 epoch, ~4 小时；Safety-RAG: 检索验证约增加 500ms 推理延迟。总训练时长约 8 小时，可行性强。
 
 ### Card 100
 **Q:** 项目的数据流程图？
-**A:** Raw Medical Corpus → Teacher (Qwen3-72B) 生成 → 人工筛选 → 55K SFT data → QLoRA Training → Checkpoint → Teacher 再次生成对比 → LLM-as-Judge 排序 → 10K DPO data → DPO Training → Final Model + Safety-RAG.
+**A:** Raw Medical Corpus → Teacher (DeepSeek-v4-pro) 生成 → 人工筛选 → 55K SFT data → QLoRA Training → Checkpoint → Teacher 再次生成对比 → LLM-as-Judge 排序 → 10K DPO data → DPO Training → Final Model + Safety-RAG.
 
 ### Card 101
 **Q:** Safety-RAG verifier 怎么训练的？
@@ -436,7 +436,7 @@
 
 ### Card 105
 **Q:** 项目中 teacher 模型为什么会出错？怎么处理的？
-**A:** Teacher (Qwen3-72B) 虽然强但不是完美的，尤其在医学长尾领域可能犯错。处理方式：1) 知识库交叉验证（生成内容与医学知识库比对）；2) 人工抽检高风险场景；3) DPO 数据中引入人工标注偏好去纠正 teacher 的错误偏好；4) Safety-RAG 作为兜底安全层。
+**A:** Teacher (DeepSeek-v4-pro) 虽然强但不是完美的，尤其在医学长尾领域可能犯错。处理方式：1) 知识库交叉验证（生成内容与医学知识库比对）；2) 人工抽检高风险场景；3) DPO 数据中引入人工标注偏好去纠正 teacher 的错误偏好；4) Safety-RAG 作为兜底安全层。
 
 ### Card 106
 **Q:** 项目如果重新做，你会怎么改进？
@@ -536,7 +536,7 @@
 
 ### Card 129
 **Q:** 追问：LLM-as-Judge 不可靠怎么办？
-**A:** 1) 多 judge 交叉验证（我们对比了 Qwen3-72B + GPT-4 + Claude 判断）；2) 与人工标注对标（200 条 Spearman 0.78 on accuracy）；3) 安全维度引入规则辅助（关键词+正则表达式做硬规则）；4) 承认局限性——安全维度 Spearman 只有 0.62，需要人工审核。
+**A:** 1) 多 judge 交叉验证（我们对比了 DeepSeek-v4-pro + GPT-4 + Claude 判断）；2) 与人工标注对标（200 条 Spearman 0.78 on accuracy）；3) 安全维度引入规则辅助（关键词+正则表达式做硬规则）；4) 承认局限性——安全维度 Spearman 只有 0.62，需要人工审核。
 
 ### Card 130
 **Q:** 追问：Medical model error is very serious, how do you handle?
@@ -588,7 +588,7 @@
 
 ### Card 142
 **Q:** 追问：Why Qwen3-8B specifically?
-**A:** Not just "because it's open source". Detailed reasons: 1) GQA (memory-efficient inference), 2) Chinese SOTA in its class (crucial for medical Chinese), 3) RMSNorm + SwiGLU (modern architecture), 4) Active community + good documentation, 5) Fits in 4×4090 for full pipeline. Compared alternatives: LLaMA-3 (poor Chinese tokenizer), ChatGLM (different architecture, less transferable knowledge).
+**A:** Not just "because it's open source". Detailed reasons: 1) GQA (memory-efficient inference), 2) Chinese SOTA in its class (crucial for medical Chinese), 3) RMSNorm + SwiGLU (modern architecture), 4) Active community + good documentation, 5) Fits in RTX 5090 32GB single card for full pipeline. Compared alternatives: LLaMA-3 (poor Chinese tokenizer), ChatGLM (different architecture, less transferable knowledge).
 
 ### Card 143
 **Q:** 追问：DPO beta 怎么选的？
@@ -756,7 +756,7 @@
 
 ### Card 181
 **Q:** vLLM 部署 8B 模型的完整启动命令是什么样的？
-**A:** `vllm serve /path/to/merged-model --host 0.0.0.0 --port 8000 --max-model-len 4096 --gpu-memory-utilization 0.9 --dtype bfloat16 --max-num-seqs 32`。关键参数：max-model-len 控制最大上下文长度（影响 KV cache 显存），gpu-memory-utilization 控制显存使用率上限（留10%给 CUDA context），max-num-seqs 控制最大并发序列数。
+**A:** `vllm serve /path/to/merged-model --host 0.0.0.0 --port 8000 --max-model-len 4096 --gpu-memory-utilization 0.9 --dtype float16 --max-num-seqs 16`。关键参数：max-model-len 控制最大上下文长度（影响 KV cache 显存），gpu-memory-utilization 控制显存使用率上限（留10%给 CUDA context），max-num-seqs 控制最大并发序列数。
 
 ### Card 182
 **Q:** vLLM 的 LoRA merge 部署 vs 动态 LoRA serving 有什么区别？
@@ -776,7 +776,7 @@
 
 ### Card 186
 **Q:** 你的项目 vLLM 压测了哪些指标？结果如何？
-**A:** 在 RTX 5090 (32GB) 上压测 merge 后的 Qwen3-8B：吞吐 877 tok/s，TTFT（首 token 延迟）42ms，TPOT（每 token 延迟）约 15ms，支持 32 并发无 OOM。使用 OpenAI-compatible API 做压测，wrk/locust 工具模拟并发。
+**A:** 在 RTX 5090 (32GB) 上压测 merge 后的 Qwen3-8B：吞吐 877 tok/s，TTFT（首 token 延迟）42ms，TPOT（每 token 延迟）约 15ms，支持 16 并发无 OOM。使用 OpenAI-compatible API 做压测，wrk/locust 工具模拟并发。
 
 ### Card 187
 **Q:** vLLM 的 prefix caching 是什么？在 RAG 场景有什么用？
@@ -824,7 +824,7 @@
 
 ### Card 197
 **Q:** 并发增加时 TTFT 和 TPOT 如何变化？饱和点是什么？
-**A:** 并发 < max-num-seqs 时：TTFT 和 TPOT 基本稳定（GPU 未饱和）。并发 > max-num-seqs 时：TTFT 急剧上升（请求在队列中等待 prefill），TPOT 略微上升（decode 竞争显存带宽）。饱和点 = max-num-seqs × (1 + avg_output_len / avg_prompt_len) 附近。我们的项目在 32 并发附近达饱和点。
+**A:** 并发 < max-num-seqs 时：TTFT 和 TPOT 基本稳定（GPU 未饱和）。并发 > max-num-seqs 时：TTFT 急剧上升（请求在队列中等待 prefill），TPOT 略微上升（decode 竞争显存带宽）。饱和点 = max-num-seqs × (1 + avg_output_len / avg_prompt_len) 附近。我们的项目在 16 并发附近达饱和点。
 
 ### Card 198
 **Q:** 如何做 vLLM 压测？
@@ -844,7 +844,7 @@
 
 ### Card 202
 **Q:** 为什么我们的项目吞吐能达到 877 tok/s？
-**A:** 8B 模型计算量相对较小 + RTX 5090 算力强（~80 TFLOPS bf16）+ continuous batching 高 GPU 利用率 + merge 后无 LoRA 额外开销 + 短 prompt（RAG 检索后拼接）。877 tok/s 是 batch 32 下的总吞吐，单用户 TPOT 约 15ms（~67 tok/s per user），感知流畅。
+**A:** 8B 模型计算量相对较小 + RTX 5090 算力强（~80 TFLOPS bf16）+ continuous batching 高 GPU 利用率 + merge 后无 LoRA 额外开销 + 短 prompt（RAG 检索后拼接）。877 tok/s 是 batch 16 下的总吞吐，单用户 TPOT 约 15ms（~67 tok/s per user），感知流畅。
 
 ---
 
@@ -1052,7 +1052,7 @@
 
 ### Card 249
 **Q:** 8B 模型全量微调需要多少 GPU 显存？QLoRA 如何降低需求？
-**A:** 全量微调 8B (bf16)：参数 16GB + 梯度 16GB + 优化器状态（Adam）32GB + 激活值（batch=1, seq=2048）~8GB ≈ 72GB。实际有效 batch=8 时激活值可能 >40GB，总需 ~100GB+。QLoRA：基座 4bit 量化（~4GB）+ LoRA 参数+梯度+优化器 ≈ 1GB + 激活值 ~8GB = ~13GB。省了近 85-90% 显存。我们的 2×4090 (24GB×2=48GB) 做全量微调不够，但 QLoRA 绰绰有余。
+**A:** 全量微调 8B (bf16)：参数 16GB + 梯度 16GB + 优化器状态（Adam）32GB + 激活值（batch=1, seq=2048）~8GB ≈ 72GB。实际有效 batch=8 时激活值可能 >40GB，总需 ~100GB+。QLoRA：基座 4bit 量化（~4GB）+ LoRA 参数+梯度+优化器 ≈ 1GB + 激活值 ~8GB = ~13GB。省了近 85-90% 显存。我们的 RTX 5090 (32GB) 做全量微调不够，但 QLoRA 绰绰有余。
 
 ---
 

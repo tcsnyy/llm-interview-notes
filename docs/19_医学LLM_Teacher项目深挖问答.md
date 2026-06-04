@@ -304,7 +304,7 @@ LoRA weight和base model做merge后，用vLLM 0.21.0作为推理引擎，部署�
 
 ### Q112: vLLM的参数怎么选？⭐⭐⭐⭐
 
-关键参数：`--max-model-len 4096`（匹配训练时context长度）、`--gpu-memory-utilization 0.90`（留10%缓冲）、`--max-num-seqs 16`（饱和并发平衡点）、`--dtype bfloat16`（和训练精度一致）、`--enable-prefix-caching`（节省约20-30% prefill时间）。在多次压测后调优的结果。（实际完成）
+关键参数：`--max-model-len 4096`（匹配训练时context长度）、`--gpu-memory-utilization 0.90`（留10%缓冲）、`--max-num-seqs 16`（饱和并发平衡点）、`--dtype float16`、`--enable-prefix-caching`（节省约20-30% prefill时间）。在多次压测后调优的结果。（实际完成）
 
 ### Q113: 如何压测你的模型？⭐⭐⭐⭐
 

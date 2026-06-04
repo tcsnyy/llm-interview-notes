@@ -263,7 +263,7 @@ Week 2: 补充 → 代码 → 模拟
 
 ## 十七、工程文件背诵版总结
 
-1. **vLLM核心参数**：max-num-seqs=16(饱和并发)、max-model-len=4096(控制KV Cache)、gpu-memory-utilization=0.90(留10%缓冲)、dtype=bfloat16
+1. **vLLM核心参数**：max-num-seqs=16(饱和并发)、max-model-len=4096(控制KV Cache)、gpu-memory-utilization=0.90(留10%缓冲)、dtype=float16
 2. **性能指标速记**：877 tok/s、TTFT 42ms(1并发)/100ms(16并发)、TPOT ~24ms(16并发)、显存峰值28.86GB
 3. **RAG延迟拆解**：embedding~50ms→向量检索~30ms→rerank~80ms→LLM生成~2000ms。优化重点：rerank与LLM生成并行、embedding/检索加缓存
 4. **Fast path路由**：简单问题(感冒/发烧/常见药)跳过RAG直接生成；高风险问题(危重症/罕见病/复杂用药)走完整RAG。预期70%请求走fast path

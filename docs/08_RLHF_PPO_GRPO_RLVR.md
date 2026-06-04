@@ -149,9 +149,9 @@ GRPO/RLVR 不是因为有人推才火，而是因为 R1 证明了这条路能做
 
 **REINFORCE++**：REINFORCE 的改进版，加了多采样求平均作为 baseline、PPO-style clipping、KL 正则化。可以理解为 GRPO 的一个变体。
 
-**DAPO**：对 GRPO 做了 Dynamic Sampling（根据训练阶段动态调整采样数）、Over-long Reward Shaping（惩罚超出长度限制的 response）、KL 约束的动态调整。
+**DAPO（Dynamic Sampling Policy Optimization）**：ByteDance 2025（arXiv:2503.14476）对 GRPO 的四项改进：① Clip-Higher（上下界不对称 clip，上界放松鼓励探索，防止 entropy collapse）；② Dynamic Sampling（过滤掉 group 内所有回答 reward 相同的 prompt，因为这些 prompt 不产生有效梯度）；③ Token-level Policy Gradient Loss（token 级别而非 sequence 级别计算 loss，避免长度偏置）；④ Overlong Reward Shaping（对超长回答做软惩罚而非硬截断）。
 
-**Dr. GRPO**：在 GRPO 的基础上引入了 discount factor，让 advantage 计算考虑时序衰减，更适合多轮对话等序列决策场景。
+**Dr. GRPO**：论文"Dr. GRPO: Removing the Entropy Collapse"（arXiv:2503.02471）。解决 GRPO 训练中 entropy 快速坍缩的问题。核心修改：移除 advantage 计算中的 std normalization。原始 GRPO：A_i = (r_i - mean(r)) / std(r)，Dr. GRPO：A_i = r_i - mean(r)（不除 std）。除以 std 在 group 内方差小时会放大 advantage 幅度，加速 entropy collapse。
 
 ---
 
@@ -260,16 +260,17 @@ PPO 需要 4 个模型（Actor + Critic + Reward Model + Reference Model），GR
 
 GRPO 也因此训练更快、超参更少、工程实现更简单——这也是 DeepSeek-R1 选择 GRPO 的重要原因。
 
-### Q: GSPO / DAPO / SAPO / VAPO 这些 GRPO 变体主要解决什么问题？star:2
+### Q: DAPO / Dr. GRPO / VAPO 这些 GRPO 变体主要解决什么问题？⭐⭐⭐
 
-| 变体 | 核心改进 |
-|------|---------|
-| GSPO | 改进采样策略，用重要性采样复用历史数据，减少 on-policy 采样成本 |
-| DAPO | 解耦对齐（Decoupled Alignment）：分别优化有用性和安全性两个 reward 维度 |
-| SAPO | 自适应采样：根据 prompt 难度动态调整 group size，简单 prompt 用少样，难的多样 |
-| VAPO | 加入 value model 作为辅助信号，在 reward 稀疏时提供额外监督 |
+| 变体 | 论文 | 核心改进 | 解决什么问题 |
+|------|------|----------|--------------|
+| **DAPO** | ByteDance 2025 (arXiv:2503.14476) | ①Clip-Higher：放宽上界 clip，增强低概率 token 探索；②Dynamic Sampling：过滤 group 内 reward/accuracy 全同、无有效梯度的 prompt；③Token-level PG Loss：缓解长回答在 loss 聚合中的长度偏置；④Overlong Reward Shaping / Soft Overlong Punishment：对超长截断样本做软惩罚 | 长 CoT RL 中的 entropy collapse、无效样本、长度偏置、超长回答 |
+| **Dr. GRPO** | arXiv:2503.02471 | 移除 advantage 的 std normalization：原 GRPO `A_i=(r_i-mean(r))/std(r)`，改为 `A_i=r_i-mean(r)` | 避免 group 内 reward 方差很小时 advantage 被异常放大，缓解训练不稳定与 entropy collapse |
+| **VAPO** | ByteDance/Seed 2025 (arXiv:2504.05118) | 使用 value-model-based RL 框架，并针对 value bias、不同序列长度、稀疏 reward 设计稳定训练机制 | 长 CoT 推理中的稀疏奖励、信用分配困难、value 估计偏差和训练稳定性问题 |
 
-这些变体主要针对 GRPO 的样本利用率低、reward 设计单一、训练不稳定的问题。当前项目中未实现，面试中了解即可。
+> **面试注意**：DAPO、Dr. GRPO、VAPO 是 2025 年围绕 GRPO / reasoning RL 的真实论文，适合重点了解。GSPO 也是真实存在，核心是 sequence-level importance ratio / clipping；SAPO 缩写存在多个不同版本，面试中不要随意展开，除非能明确对应论文。
+
+当前项目中未实现这些变体，面试中了解原理即可。
 
 
 ### Q: PPO 的完整 loss 由哪几部分组成？star:5

@@ -258,7 +258,7 @@ vllm serve ./merged_qwen3_8b_medical \
   --host 0.0.0.0 \
   --port 8000 \
   --served-model-name medical-llm-teacher \
-  --dtype bfloat16 \
+  --dtype float16 \
   --max-model-len 4096 \
   --max-num-seqs 16 \
   --gpu-memory-utilization 0.90 \
@@ -272,7 +272,7 @@ vllm serve ./merged_qwen3_8b_medical \
 
 | 参数 | 本项目值 | 说明 |
 |------|---------|------|
-| `--dtype` | bfloat16 | 与BF16训练一致，精度无损 |
+| `--dtype` | float16 | RTX 5090 Blackwell 原生支持，显存与 BF16 相同 |
 | `--max-model-len` | 4096 | 单请求最大token数，控制KV Cache上限 |
 | `--max-num-seqs` | 16 | 最大并发序列数（饱和并发点） |
 | `--gpu-memory-utilization` | 0.90 | 使用90%显存，留10%缓冲 |

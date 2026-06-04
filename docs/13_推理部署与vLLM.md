@@ -173,7 +173,7 @@ model.save_pretrained("./merged_qwen3_8b_medical", safe_serialization=True)
 
 ```bash
 vllm serve ./merged_qwen3_8b_medical \
-  --host 0.0.0.0 --port 8000 --dtype bfloat16 \
+  --host 0.0.0.0 --port 8000 --dtype float16 \
   --max-model-len 4096 --max-num-seqs 16 \
   --gpu-memory-utilization 0.90 --enable-prefix-caching \
   --chat-template ./chat_template.jinja --served-model-name medical-llm-teacher
@@ -600,7 +600,7 @@ vllm serve ./model --enable-prefix-caching
 ```bash
 # vLLM 启动
 export VLLM_USE_FLASHINFER_SAMPLER=0
-vllm serve ./merged_model --dtype bfloat16 --max-model-len 4096 \
+vllm serve ./merged_model --dtype float16 --max-model-len 4096 \
   --max-num-seqs 16 --gpu-memory-utilization 0.90 \
   --chat-template ./chat_template.jinja
 

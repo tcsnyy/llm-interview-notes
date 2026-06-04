@@ -219,7 +219,7 @@ export CUDA_VISIBLE_DEVICES=0
 vllm serve ./merged_qwen3_8b_medical \
   --host 0.0.0.0 --port 8000 \
   --served-model-name medical-llm-teacher \
-  --dtype bfloat16 --max-model-len 4096 \
+  --dtype float16 --max-model-len 4096 \
   --max-num-seqs 16 --gpu-memory-utilization 0.90 \
   --enable-prefix-caching --trust-remote-code
 ```

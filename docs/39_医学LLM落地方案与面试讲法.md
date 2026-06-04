@@ -67,7 +67,7 @@
 
 ### B.4 后训练版（面试官是后训练方向）
 
-> 从Teacher数据生成到DPO偏好对齐的完整后训练项目：用Qwen3-72B做teacher蒸馏55K数据，QLoRA(r=16)做SFT，构造10K偏好对做DPO(β=0.1)，LLM-as-Judge三维度评测，最终用Safety-RAG修复DPO引入的幻觉。
+> 从Teacher数据生成到DPO偏好对齐的完整后训练项目：用DeepSeek-v4-pro做teacher蒸馏55K数据，QLoRA(r=16)做SFT，构造10K偏好对做DPO(β=0.1)，LLM-as-Judge三维度评测，最终用Safety-RAG修复DPO引入的幻觉。
 
 ### B.5 面试简洁版（HR/快速介绍）
 
@@ -80,7 +80,7 @@
 ```
 我的医学LLM项目，从落地角度分四个维度讲：
 
-【训练侧】用Qwen3-72B做teacher模型生成了55K条医学对话数据，
+【训练侧】用DeepSeek-v4-pro做teacher模型生成了55K条医学对话数据，
 经过三层过滤保留11K高质量样本。用QLoRA在RTX 5090上完成SFT训练，
 然后构造了10K偏好对做DPO对齐。
 
@@ -104,7 +104,7 @@
 ```
 我的医学LLM Teacher项目，从工程落地角度分六个阶段讲。
 
-第一阶段：teacher数据生成。用Qwen3-72B重新生成答案，设计专业的医学system prompt，
+第一阶段：teacher数据生成。用DeepSeek-v4-pro重新生成答案，设计专业的医学system prompt，
 temperature设0.2保证确定性。55K数据经过三层过滤（规则/模型打分/人工抽检5%），
 最终保留55,000条，保留率64.7%。
 
@@ -183,7 +183,7 @@ Redis做RAG检索缓存、Prometheus+Grafana做监控告警。
 
 ### Q2: vLLM参数怎么选的？⭐⭐⭐⭐
 
-> RTX 5090（32GB显存）上部署Qwen3-8B：max-model-len=8192（覆盖绝大多数场景）、gpu-memory-utilization=0.90（留10% buffer）、max-num-seqs=16（单卡8B模型的最佳并发）、dtype=float16。参数通过压测验证有具体数据支撑。
+> RTX 5090（32GB显存）上部署Qwen3-8B：max-model-len=4096（覆盖绝大多数场景）、gpu-memory-utilization=0.90（留10% buffer）、max-num-seqs=16（单卡8B模型的最佳并发）、dtype=float16。参数通过压测验证有具体数据支撑。
 
 ### Q3: 如何压测？token/s怎么解释？⭐⭐⭐⭐⭐
 
@@ -228,7 +228,7 @@ Redis做RAG检索缓存、Prometheus+Grafana做监控告警。
 | 为什么不用70B？ | 显存约束+8B足够+teacher蒸馏填补差距 |
 | LoRA merge后大小变了？ | 参数量不变，从两个文件变成一个文件 |
 | embedding用什么？ | BGE-large-zh-v1.5, 1024维 |
-| 能处理多长对话？ | 训练2048，部署8192，建议10轮内 |
+| 能处理多长对话？ | 训练2048，部署4096，建议10轮内 |
 | 会不会泄露训练数据？ | 数据来自公开数据集，不含真实患者信息 |
 | chat template一致性？ | 训练/推理使用同一份tokenizer_config.json |
 
@@ -266,7 +266,7 @@ Redis做RAG检索缓存、Prometheus+Grafana做监控告警。
 
 【部署】
 7. 部署架构：Docker Compose编排3-4容器(vLLM GPU+RAG CPU+ChromaDB+Redis)+Nginx
-8. vLLM配置：max-model-len=8192, gpu-memory=0.90, max-num-seqs=16, FP16
+8. vLLM配置：max-model-len=4096, gpu-memory=0.90, max-num-seqs=16, FP16
 9. 性能数据：877 tok/s, TTFT 42ms, 单卡3-5路并发
 10. 版本管理：模型/tokenizer/chat template/prompt/RAG知识库/Judge prompt全线版本化
 
