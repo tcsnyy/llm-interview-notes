@@ -167,13 +167,15 @@ $$\text{Var}(q \cdot k) = \sum_{i=1}^{d_k} \text{Var}(q_i k_i) = d_k$$
 
 **为什么需要 FFN**：没有 FFN 的纯 Attention 模型表达能力不足——Attention 本质是线性加权，多层叠加也只是线性组合。FFN 的非线性激活提供了额外的表达能力，是 Transformer 能存储大量知识的关键。
 
+**SwiGLU 是什么**：名字拆开——**Swi**sh + **GLU**（Gated Linear Unit，门控线性单元）。SwiGLU 就是把 GLU 架构中的激活函数换成了 Swish（也叫 SiLU）。核心思想是**引入门控机制**——用一部分参数控制另一部分参数的输出，让 FFN 可以**选择性地激活**不同维度的信息，而非对所有 token 无差别做相同变换。
+
 **标准 FFN vs SwiGLU**：
 
-标准 FFN（两个权重矩阵）：
+标准 FFN（两个权重矩阵，无门控）：
 $$\text{FFN}(x) = \text{GELU}(xW_1 + b_1) W_2 + b_2$$
-先升维到 $4 \cdot d_{model}$ → 激活 → 降维回 $d_{model}$。
+先升维到 $4 \cdot d_{model}$ → 激活 → 降维回 $d_{model}$。GELU 决定"哪些维度通过"，但决策依据只是当前值的大小，没有学习门控参数。
 
-SwiGLU（三个权重矩阵 + 门控机制）：
+SwiGLU（三个权重矩阵，可学习的门控）：
 $$\text{SwiGLU}(x) = (\text{SiLU}(xW_{gate}) \odot xW_{up}) W_{down}$$
 
 三个矩阵在 LLaMA/Qwen config 中的对应名称：
@@ -181,13 +183,13 @@ $$\text{SwiGLU}(x) = (\text{SiLU}(xW_{gate}) \odot xW_{up}) W_{down}$$
 - `up_proj`（$W_{up}$）：待门控的内容——"需要被筛选的信息"
 - `down_proj`（$W_{down}$）：投影回原始维度
 
-**门控的直觉**：$W_{gate}$ 的输出经过 SiLU 得到一个 0~1 之间的"开关"，逐元素乘到 $W_{up}$ 的输出上。如果 gate=1，"这个维度的信息通过"；如果 gate≈0，"这个维度的信息被屏蔽"。这比 ReLU（粗暴截断负数）或 GELU（平滑但无选择性）更精细——模型可以**选择性地激活**不同维度。
+**门控的直觉**：$xW_{gate}$ 经过 SiLU 得到一个 0~1 之间的"开关值"，逐元素乘到 $xW_{up}$ 的输出上。gate≈1 意味着"这个维度的信息重要，放行"；gate≈0 意味着"这个维度无关，屏蔽"。这比 ReLU（粗暴截断负数，一刀切）更精细——模型可以针对不同 token 学习不同的激活模式。
 
-**为什么 SwiGLU 更好**：实验证明在相同计算量下 SwiGLU > GELU > ReLU。门控机制让 FFN 学会"根据上下文选择性激活知识"，而非对每个 token 无差别地做相同变换。这是现代 LLM（LLaMA、Qwen、DeepSeek）的标配。
+**为什么更优**：在相同参数量和计算量下，SwiGLU > GELU > ReLU。门控机制让 FFN 不是"所有 token 都做同样的非线性变换"，而是根据输入自适应调节。这是 LLaMA、Qwen、DeepSeek 等现代 LLM 的标配。
 
-**参数量对比**：标准 FFN 中间维度 $4d$，参数量 $8d^2$；SwiGLU 中间维度 $\frac{8}{3}d \approx 2.67d$，参数量 $3 \times d \times 2.67d \approx 8d^2$——**参数量基本相同，但 SwiGLU 效果更好**。
+**参数量对比**：标准 FFN 中间维度 $4d$，参数量 $2 \times d \times 4d = 8d^2$；SwiGLU 中间维度 $\frac{8}{3}d$，参数量 $3 \times d \times \frac{8}{3}d = 8d^2$。参数量相同，效果更好。
 
-在 MiniMind 项目中 `hidden_act='silu'`，config 中的 `gate_proj/up_proj/down_proj` 就是 SwiGLU 的三矩阵。Qwen3-8B 同样使用 SwiGLU。
+在 MiniMind 中 `hidden_act='silu'`，config 中 `gate_proj/up_proj/down_proj` 即为 SwiGLU 的三矩阵。Qwen3-8B 同理。
 
 ---
 
