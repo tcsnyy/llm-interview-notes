@@ -51,9 +51,9 @@
 **SFT 的目标函数就是 Causal Language Modeling Loss（因果语言模型损失）**，本质上就是交叉熵损失（Cross-Entropy Loss），但在自回归的条件下计算。
 
 公式：
-```
-Loss = -1/N * Sigma log P(y_t | y_<t, x)
-```
+
+$$\mathcal{L} = -\frac{1}{N} \sum_{t} \log P(y_t | y_{<t}, x)$$
+
 - x 是输入（user message、system prompt）
 - y 是输出（assistant answer）
 - y_t 是第 t 个 token
