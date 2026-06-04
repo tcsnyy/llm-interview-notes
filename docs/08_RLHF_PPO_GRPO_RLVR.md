@@ -28,7 +28,7 @@ RLHF 是三阶段管线——SFT 学指令格式，Reward Model 学人类偏好�
 
 ![PPO 训练流程图](images/PPO%E8%AE%AD%E7%BB%83%E6%B5%81%E7%A8%8B%E5%9B%BE.png)
 
-**阶段一（SFT）**：在高质量指令-回答对上微调基座模型，目的是让模型学会遵循指令、输出符合人类偏好的格式。本项目中：使用 HuatuoGPT2-SFT-GPT4-140K 子集 + Teacher 生成答案，最终 11,393 条 SFT 数据。
+**阶段一（SFT）**：在高质量指令-回答对上微调基座模型，目的是让模型学会遵循指令、输出符合人类偏好的格式。本项目中：使用 HuatuoGPT2-SFT-GPT4-140K 子集 + Teacher 生成答案，最终 55,000 条 SFT 数据。
 
 **阶段二（RM 训练）**：RM 是一个独立训练的模型（通常从 SFT 模型初始化），输入 prompt+response，输出一个标量 reward。训练数据为人工对同一 prompt 的多个 response 进行排序（A > B > C），经典 loss 为 pairwise ranking loss：
 

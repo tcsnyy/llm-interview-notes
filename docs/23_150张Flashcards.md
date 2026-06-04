@@ -360,14 +360,14 @@
 
 ### Card 086
 **Q:** 医学 LLM Teacher 项目的完整 pipeline？
-**A:** Teacher 数据生成 (Qwen3-72B) → 58K SFT (QLoRA) → 10K DPO → LLM-as-Judge 评测 → DPO 后发现医疗长尾幻觉 → Safety-RAG 修复 → vLLM 部署。关键发现：DPO 后幻觉增加，Safety-RAG 修复后幻觉下降 66.7%。
+**A:** Teacher 数据生成 (Qwen3-72B) → 55K SFT (QLoRA) → 10K DPO → LLM-as-Judge 评测 → DPO 后发现医疗长尾幻觉 → Safety-RAG 修复 → vLLM 部署。关键发现：DPO 后幻觉增加，Safety-RAG 修复后幻觉下降 66.7%。
 
 ### Card 087
 **Q:** 为什么选 Qwen3-8B 作为基座模型？
 **A:** 1) GQA 机制推理效率高；2) 中文能力同规模 SOTA（中文医疗场景核心需求）；3) 8B 规模在前 4 张 A100/4090 上可完成全流程训练。LLaMA 中文 tokenizer 效率低约 30%。
 
 ### Card 088
-**Q:** 58K SFT 数据怎么来的？
+**Q:** 55K SFT 数据怎么来的？
 **A:** Teacher 模型 Qwen3-72B 生成 + 人工筛选。覆盖问诊、检查解读、用药咨询、健康科普 4 个场景。数据多样性通过：不同 temperature 采样 + 多 prompt 模板 + 医疗知识库引导生成。人工抽检 10% 保证质量。
 
 ### Card 089
@@ -412,11 +412,11 @@
 
 ### Card 099
 **Q:** 项目训练各阶段的耗时和硬件？
-**A:** SFT (QLoRA): 2×4090 24G, 58K 数据, 3 epoch, ~12 小时；DPO: 2×4090, 10K 数据, 1 epoch, ~4 小时；Safety-RAG: 检索验证约增加 500ms 推理延迟。总训练时长约 16 小时，可行性强。
+**A:** SFT (QLoRA): 2×4090 24G, 55K 数据, 3 epoch, ~12 小时；DPO: 2×4090, 10K 数据, 1 epoch, ~4 小时；Safety-RAG: 检索验证约增加 500ms 推理延迟。总训练时长约 16 小时，可行性强。
 
 ### Card 100
 **Q:** 项目的数据流程图？
-**A:** Raw Medical Corpus → Teacher (Qwen3-72B) 生成 → 人工筛选 → 58K SFT data → QLoRA Training → Checkpoint → Teacher 再次生成对比 → LLM-as-Judge 排序 → 10K DPO data → DPO Training → Final Model + Safety-RAG.
+**A:** Raw Medical Corpus → Teacher (Qwen3-72B) 生成 → 人工筛选 → 55K SFT data → QLoRA Training → Checkpoint → Teacher 再次生成对比 → LLM-as-Judge 排序 → 10K DPO data → DPO Training → Final Model + Safety-RAG.
 
 ### Card 101
 **Q:** Safety-RAG verifier 怎么训练的？
@@ -479,8 +479,8 @@
 **A:** SFT 后 vs base model：医疗问答准确率大幅提升（base 几乎不能做医疗对话）；DPO 后 vs SFT：偏好胜率 (+8%)，但幻觉案例增加；Safety-RAG 后 vs DPO：3 个典型案例幻觉全部消失，回复更保守但更安全。定性变化 > 定量变化——这也是诚实表述。
 
 ### Card 116
-**Q:** 为什么你的 SFT 只有 58K 数据而不是几十万？
-**A:** 1) 医学领域对数据质量要求极高，优先保证质量而非数量；2) Teacher 模型生成 + 人工筛选的成本限制；3) 58K 在 8B 模型的 QLoRA 微调下已够学到初步医疗能力；4) 重点在后续的 DPO + Safety-RAG 创新，SFT 是基础而非核心。
+**Q:** 为什么你的 SFT 只有 55K 数据而不是几十万？
+**A:** 1) 医学领域对数据质量要求极高，优先保证质量而非数量；2) Teacher 模型生成 + 人工筛选的成本限制；3) 55K 在 8B 模型的 QLoRA 微调下已够学到初步医疗能力；4) 重点在后续的 DPO + Safety-RAG 创新，SFT 是基础而非核心。
 
 ### Card 117
 **Q:** DPO 10K 数据的 "subtle but meaningful" mean?
@@ -648,7 +648,7 @@
 
 ### Card 156
 **Q:** 易错：SFT 数据越多越好？ ❌
-**A:** **不是！** 质量 >> 数量。LIMA 论文只用 1000 条高质量数据就取得了很好的效果。低质量 SFT 数据反而会让模型学到错误模式。58K 是我们权衡质量和多样性后的结果。
+**A:** **不是！** 质量 >> 数量。LIMA 论文只用 1000 条高质量数据就取得了很好的效果。低质量 SFT 数据反而会让模型学到错误模式。55K 是我们权衡质量和多样性后的结果。
 
 ### Card 157
 **Q:** 易错：DPO 和 RLHF/PPO 是一回事？ ❌
