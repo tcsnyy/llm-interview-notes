@@ -1,4 +1,4 @@
-MathJax = {
+window.MathJax = {
   tex: {
     inlineMath: [["$", "$"]],
     displayMath: [["$$", "$$"]],
@@ -6,3 +6,7 @@ MathJax = {
     processEnvironments: true
   }
 };
+
+document$.subscribe(() => {
+  MathJax.typesetPromise();
+});
