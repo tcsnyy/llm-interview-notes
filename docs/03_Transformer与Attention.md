@@ -313,14 +313,66 @@ FlashAttention 通过**算子融合和分块计算**来减少 HBM 读写：
 
 ---
 
-## 十三、长上下文为什么难
+## 十三、长上下文与位置编码外推
 
 ### Q: 为什么 LLM 处理长上下文很难？⭐⭐⭐⭐
 
-1. **Attention 复杂度**：Self-attention 的复杂度是 $O(n^2)$，序列翻倍，计算量翻四倍
+1. **Attention 复杂度**：$O(n^2 d)$，序列翻倍，计算量翻四倍
 2. **KV Cache 显存**：随序列长度线性增长
-3. **位置编码外推**：训练时的位置编码范围有限，推理时需要外推但可能不稳定
+3. **位置编码外推**：训练时 RoPE 只见过 0~4096 的位置，推理时看到位置 8000 的 token，模型不知道如何处理——这就是"外推"问题
 4. **Lost in the Middle**：模型对中间位置的信息利用效率低于开头和结尾
+
+### Q: 位置编码外推是什么？RoPE 在外推时出了什么问题？⭐⭐⭐⭐
+
+RoPE 训练长度有限（如 4096），推理时如果要处理 8192 长度的文本，位置 4097~8192 的 token 会分配到**训练时从未见过的旋转角度**。RoPE 的高频分量负责局部注意力（相邻 token 关系），低频分量负责长距离注意力。直接外推时，低频分量的旋转角超出训练范围，导致长距离注意力的质量急剧下降。
+
+打个比方：RoPE 训练时学会了识别"距离 1~4096 的 token 怎么关联"，推理时突然要求识别"距离 8000 的 token"，模型不知道怎么办。
+
+### Q: 常见的位置编码外推方法有哪些？各有什么优劣？⭐⭐⭐⭐
+
+核心思想都是在**不重新训练**的前提下，想办法让 RoPE 适应更长的序列。
+
+**1. Position Interpolation (PI，位置插值)**：直接把所有位置索引线性缩放。如果训练长度 4096，推理长度 8192，就把位置 8192 缩放为 4096。公式：$pos' = pos \cdot \frac{L_{train}}{L_{infer}}$。简单粗暴，但高频信息丢失严重——相邻 token 被压缩得太密，局部注意力退化。
+
+**2. NTK-aware Scaling**：对 RoPE 的 base theta 做非线性缩放，让高频分量保持不动（局部敏感），低频分量拉伸覆盖更远位置。公式：$\theta' = \theta \cdot (\alpha)^{d/(D-2)}$，其中 $d$ 是维度索引，$\alpha$ 是缩放因子。比 PI 优雅得多——高频的局部注意力不受影响，低频被拉伸去覆盖新位置。
+
+**3. YaRN（Yet another RoPE extensioN）**：在 NTK-aware 的基础上加了两项改进，2023 年提出，是目前最主流的外推方法：
+
+- **NTK-aware 缩放做频率外推**——和上面一样，高频不动、低频拉伸
+- **温度调节 attention score**：对长序列的 attention logit 做一个温度缩放 $1/t$，防止长序列下 attention 分布过于尖锐。公式：$\text{softmax}(QK^T / (t \cdot \sqrt{d_k}))$，其中 $t$ 随序列长度线性增长
+- **两种模式**：YaRN 支持不微调直接外推（有性能损失），也支持用少量长文本数据微调几步（效果更好）
+
+**为什么 YaRN 更好**：PI 把高频也压缩了（局部注意力被破坏），NTK-aware 保护了高频但没处理 attention 分布，YaRN 既保护高频又用温度调节 attention 分布——是目前长上下文外推的事实标准。
+
+**4. Dynamic NTK**：推理时根据当前序列长度动态调整 scale 因子，不需要预设目标长度。序列短时 scale=1（不调），序列变长时 scale 自动增大。
+
+### Q: YaRN 在 MiniMind 中是怎么配置的？⭐⭐⭐
+
+MiniMind 的 config 中 `rope_scaling` 配置了 YaRN：
+
+```python
+rope_scaling = {
+    "type": "yarn",           # 使用 YaRN
+    "factor": 16,             # 外推倍数：2048 → 32768
+    "original_max_position_embeddings": 2048,  # 训练时的最大长度
+    "beta_fast": 32,          # 高频边界参数（越小高频保护越强）
+    "beta_slow": 1,           # 低频边界参数
+    "attention_factor": 1.0   # attention score 缩放因子
+}
+```
+
+- `factor=16`：将训练长度 2048 外推到 32768（2048 × 16）
+- `beta_fast=32`：控制哪些维度被视为"高频"——低于此阈值的频率不动
+- `beta_slow=1`：控制哪些维度被视为"低频"——高于此阈值的频率拉伸
+
+YaRN 和 FlashAttention 可以同时使用——YaRN 改位置编码，FlashAttention 加速 attention 计算，两者正交。
+
+| 方法 | 高频保护 | 低频处理 | attention调节 | 需要微调 | 使用情况 |
+|------|---------|---------|-------------|---------|---------|
+| PI (位置插值) | ❌ 被压缩 | 线性缩放 | ❌ | 建议微调 | 早期方案 |
+| NTK-aware | ✅ 不动 | 非线性拉伸 | ❌ | 可不微调 | LLaMA 2 |
+| **YaRN** | ✅ 不动 | 非线性拉伸 | ✅ 温度调节 | 可选 | LLaMA 2/3, MiniMind |
+| Dynamic NTK | ✅ 动态 | 动态 | ❌ | 可不微调 | 部分国产模型 |
 
 ---
 
@@ -416,5 +468,7 @@ CoT 蒸馏的风险：
 10. KV Cache 避免重复计算，推理加速关键
 11. FlashAttention 通过分块计算 + IO 优化加速 attention
 12. 长上下文难在 Attention $O(n^2 d)$、KV Cache 显存、位置外推、Lost in Middle
+12b. 位置外推四种方法：PI（简单粗暴压高频）< NTK-aware（保护高频拉伸低频）< YaRN（NTK-aware + 温度调节 attention，事实标准）< Dynamic NTK（动态适配）
+12c. YaRN 三要素：NTK 频率缩放 + attention 温度调节 + 可选微调；MiniMind 配置 factor=16 将 2048 外推到 32768
 13. MiniMind 实现了完整的 decoder-only Transformer（RMSNorm+RoPE+GQA+SwiGLU+FlashAttn）
 14. **Transformer FLOPs 估算**：前向约 $2\cdot P\cdot S$ FLOPs（P=参数量, S=序列长度），反向约 4×。一个 8B 模型在 seq_len=2048 时前向约 32.8 TFLOPs
