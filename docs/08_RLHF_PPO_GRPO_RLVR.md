@@ -215,6 +215,64 @@ OPD 相当于"让好老师教你"，GRPO 相当于"让规则奖励你自己探�
 
 ---
 
+---
+
+## PPO 深度解析
+
+### Q: PPO 的 ratio 是什么？为什么需要重要性采样？star:5
+
+PPO 中 ratio = $\frac{\pi_{new}(a|s)}{\pi_{old}(a|s)}$，即新策略和旧策略在同一状态下产生同一动作的概率比。
+
+**为什么需要 ratio？** 因为 PPO 用旧策略 $\pi_{old}$ 采样的数据（advantage $\hat{A}$）来更新新策略 $\pi_{new}$。这是重要性采样：用旧分布的数据估计新分布的期望。ratio 修正了采样分布不一致的问题——如果新策略认为某动作的概率比旧策略高（ratio > 1），就放大该样本的权重；反之收缩。
+
+PPO-Clip 的目标函数：$\mathcal{L} = \min(r \cdot \hat{A}, \text{clip}(r, 1-\epsilon, 1+\epsilon) \cdot \hat{A})$
+其中 $\epsilon$ 通常为 0.1~0.2。Clip 机制防止单步更新过大——当 ratio 超出 $[1-\epsilon, 1+\epsilon]$ 时直接截断，不再给梯度。这相当于一个**信任域**约束。
+
+### Q: GAE 是什么？PPO 中 advantage 是怎么算的？star:5
+
+**Advantage** $A = Q(s,a) - V(s)$，即"做这个动作比平均好多少"。
+
+**GAE (Generalized Advantage Estimation)**：用 λ 参数在 bias 和 variance 之间插值：
+$$A^{GAE} = \sum_{l=0}^{\infty} (\gamma \lambda)^l \delta_{t+l}$$
+其中 $\delta_t = r_t + \gamma V(s_{t+1}) - V(s_t)$ 是 TD error。
+
+- λ=0：只用单步 TD error，bias 高但 variance 低
+- λ=1：等价于蒙特卡洛 return，无 bias 但 variance 高
+- 典型值 λ=0.95，折中效果好
+
+PPO 中 advantage 通常用 GAE 计算，因为它在理论上更稳定，实践中效果优于直接使用 return。
+
+### Q: GRPO 中 group sampling 和 reward normalization 是怎么做的？star:5
+
+对每个 prompt $x$，采样 $G$ 个回答 $\{y_1...y_G\}$（通常 $G$=4~64）。对每个回答打分 $\{r_1...r_G\}$，然后组内标准化：
+
+$$\hat{A}_i = \frac{r_i - \text{mean}(\{r\})}{\text{std}(\{r\})}$$
+
+这就是**不需要 Value Model 的关键**——组内相对排序直接作为优势估计的代理。如果一个回答比组平均好，它的 advantage 为正；差则为负。
+
+如果一组内所有回答都很差（reward 都低），标准化后仍然会有正有负——这是潜在问题。差的回答之间对比可能学到错误方向。因此 GRPO 通常需要 reward model 质量较高、group size 够大来降低噪声。
+
+### Q: GRPO 为什么不需要 Critic / Value Model？比 PPO 省多少？star:4
+
+PPO 需要 4 个模型（Actor + Critic + Reward Model + Reference Model），GRPO 只需要 2 个（Policy + Reference Model）。去掉 Critic 的原因是：**group relative reward 本身就是优势函数的无偏估计**——不需要额外训练一个神经网络来预测状态价值。
+
+显存对比（以 8B 模型为例）：
+- PPO：~4 × 16GB = 64GB（4个模型）
+- GRPO：~2 × 16GB = 32GB（2个模型）+ 采样显存
+
+GRPO 也因此训练更快、超参更少、工程实现更简单——这也是 DeepSeek-R1 选择 GRPO 的重要原因。
+
+### Q: GSPO / DAPO / SAPO / VAPO 这些 GRPO 变体主要解决什么问题？star:2
+
+| 变体 | 核心改进 |
+|------|---------|
+| GSPO | 改进采样策略，用重要性采样复用历史数据，减少 on-policy 采样成本 |
+| DAPO | 解耦对齐（Decoupled Alignment）：分别优化有用性和安全性两个 reward 维度 |
+| SAPO | 自适应采样：根据 prompt 难度动态调整 group size，简单 prompt 用少样，难的多样 |
+| VAPO | 加入 value model 作为辅助信号，在 reward 稀疏时提供额外监督 |
+
+这些变体主要针对 GRPO 的样本利用率低、reward 设计单一、训练不稳定的问题。当前项目中未实现，面试中了解即可。
+
 ## 背诵版总结
 
 ```

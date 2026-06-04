@@ -245,6 +245,68 @@ MiniMind 项目 `model/transformer.py` 包含标准 Transformer 教学实现，�
 
 ---
 
+## 十五、MoE (Mixture of Experts)
+
+### Q: MoE 架构的原理是什么？Expert / Router / Top-K routing 分别起什么作用？star:4
+
+MoE 将 FFN 层替换为多个"专家"（Expert，各自独立的小 FFN），每个 token 只激活其中 Top-K 个（通常 K=2）。
+
+**Router（门控）**：$G(x) = \text{TopK}(\text{softmax}(x \cdot W_g))$，决定每个 token 分配给哪些专家。
+**输出**：$y = \sum_{i \in \text{TopK}} G(x)_i \cdot E_i(x)$，被选中专家的输出按路由权重加权求和。
+
+**为什么叫"稀疏激活"**：虽然总参数量大（多个专家），但每个 token 只激活一小部分参数，计算量远小于同等参数量的 Dense 模型。例如 Mixtral 8x7B 有 47B 总参数，但每个 token 只激活约 13B。
+
+### Q: MoE 训练的主要挑战是什么？Router 负载不均衡会造成什么后果？star:4
+
+1. **负载不均衡**：如果 Router 把所有 token 分给同一个专家，其他专家"饿死"，模型退化为 Dense 模型。
+
+解法——**Auxiliary Loss**（辅助损失）：
+$$\mathcal{L}_{aux} = \alpha \cdot N \sum_{i=1}^{N} f_i \cdot P_i$$
+其中 $f_i$ 是分给专家 i 的 token 比例（希望均匀），$P_i$ 是平均路由概率。惩罚"专家使用不均"。
+
+2. **通信开销**：Expert Parallelism 中专家分布在不同 GPU 上，token 需要 All-to-All 通信交换，在大规模训练中成为主要瓶颈。
+
+3. **训练不稳定**：Router 的选择是离散的，梯度无法直接回传（通常用 straight-through estimator）。
+
+**代表模型**：Mixtral 8x7B（Sparse MoE）、DeepSeek-V3（DeepSeekMoE + 共享专家 + 细粒度专家划分）。
+
+**和项目结合**：MiniMind 支持可选 MoE 架构（use_moe=True, n_routed_experts=4, num_experts_per_tok=2），我了解其原理但医学 LLM 项目中未使用 MoE。
+
+---
+
+## 十六、蒸馏
+
+### Q: 知识蒸馏中 teacher model 怎么选？黑盒蒸馏和白盒蒸馏的区别？star:3
+
+**Teacher 选择原则**：
+1. 同领域更强模型（如医学用 GPT-4/Claude 做 teacher）
+2. 可以比 student 大很多（8B 模型蒸馏 GPT-4 可行）
+3. 如果有多个 teacher，用 ensemble 或 max 逻辑
+
+**黑盒蒸馏 vs 白盒蒸馏**：
+
+| | 黑盒蒸馏 | 白盒蒸馏 |
+|---|---------|---------|
+| 可访问 | 仅 API 输出（最终文本） | logits / hidden states |
+| 训练信号 | 文本匹配 / Judge 评分 | KL 散度 logits 匹配 / 中间层对齐 |
+| 优点 | 不依赖 teacher 内部结构 | 信息量更大，效果更好 |
+| 缺点 | 信息损失大 | 需要 teacher 开源或能内部访问 |
+
+**我的医学项目**：使用 MiMo-v2.5-pro API 做 teacher，是黑盒蒸馏——只能获取最终文本，通过 Judge 过滤保证质量，从 80K 条原始生成中筛选出 11,393 条高质量 SFT 数据（73.6% 保留率）。
+
+### Q: CoT 蒸馏有什么风险？应该蒸馏思维链还是只蒸馏答案？star:3
+
+CoT 蒸馏的风险：
+1. **teacher 推理错误但答案正确**：Student 学到错误的推理路径
+2. **推理风格不匹配**：Teacher 的 CoT 风格可能不适合 student 模型
+3. **长度膨胀**：蒸馏 teacher 的长 CoT 会让 student 也变啰嗦
+
+**建议**：先蒸馏答案（确保正确性），再蒸馏推理过程（提升推理能力）。推理蒸馏需要额外过滤——如果 teacher 的 CoT 中包含错误推理，该样本应该被丢弃。
+
+**和项目结合**：我选择不蒸馏 CoT，而是通过精心设计的 teacher prompt 让 MiMo 生成"纯文本段落回答"而非思维链——医学问答更看重准确性和安全性，而非显式推理展示。
+
+---
+
 ## 背诵版总结
 
 1. Transformer 核心：Embedding + Attention + FFN + Residual + Norm + LM Head

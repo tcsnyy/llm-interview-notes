@@ -121,6 +121,23 @@ L_DPO(π_θ; π_ref) = -E_{(x, y_w, y_l) ~ D} [
 
 **关键**：Z(x) 在 chosen 和 rejected 的差值中消去是 DPO 推导最精妙的一步。如果 Z(x) 不能消去，DPO 就无法仅用 policy 的 logprob 来计算 loss。
 
+
+**从 Bradley-Terry 到 DPO 的完整推导**：
+
+Bradley-Terry 偏好模型：人类偏好 $y_w \succ y_l$ 的概率为
+$$P(y_w \succ y_l | x) = \sigma(r(x, y_w) - r(x, y_l))$$
+即奖励差越大，chosen 胜出的概率越高。
+
+RLHF 中，最优策略和奖励的关系为（从 KL 约束优化推导）：
+$$\pi^*(y|x) = \frac{1}{Z(x)} \pi_{ref}(y|x) \exp\left(\frac{r(x,y)}{\beta}\right)$$
+
+反解出奖励：$r(x,y) = \beta \log \frac{\pi^*(y|x)}{\pi_{ref}(y|x)} + \beta \log Z(x)$
+
+代入 Bradley-Terry，消去 $Z(x)$，将 $\pi^*$ 替换为当前策略 $\pi_\theta$：
+$$\mathcal{L}_{DPO} = -\mathbb{E}\left[\log \sigma\left(\beta \log \frac{\pi_\theta(y_w|x)}{\pi_{ref}(y_w|x)} - \beta \log \frac{\pi_\theta(y_l|x)}{\pi_{ref}(y_l|x)}\right)\right]$$
+
+这就是 DPO 的优雅之处——**不需要显式训练 reward model，直接最大化 chosen 和 rejected 在 policy 下的 log probability 差异，同时用 reference model 做正则化**。
+
 ---
 
 ### Q: Beta 参数怎么选？太大或太小会怎样？⭐⭐⭐
