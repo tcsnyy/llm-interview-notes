@@ -32,13 +32,11 @@ RLHF 是三阶段管线——SFT 学指令格式，Reward Model 学人类偏好�
 
 **阶段二（RM 训练）**：RM 是一个独立训练的模型（通常从 SFT 模型初始化），输入 prompt+response，输出一个标量 reward。训练数据为人工对同一 prompt 的多个 response 进行排序（A > B > C），经典 loss 为 pairwise ranking loss：
 
-```
-L_RM = -log(σ(r_chosen - r_rejected))
-```
+$$\mathcal{L}_{RM} = -\log\sigma(r_{chosen} - r_{rejected})$$
 
 RM 的要求：准确捕捉人类偏好的细粒度差异；不能只学会长度偏好等表面特征。
 
-**阶段三（PPO 强化学习）**：用 PPO 算法优化 policy（即 SFT 模型），最大化 RM 打分，同时用 KL 散度约束不让模型偏离 SFT 模型太远。PPO 本质是 actor-critic 方法：policy network（actor）生成 response，value network（critic）估计期望回报。优化目标：max E[RM(prompt, response) - β * KL(π_θ || π_ref)]。
+**阶段三（PPO 强化学习）**：用 PPO 算法优化 policy（即 SFT 模型），最大化 RM 打分，同时用 KL 散度约束不让模型偏离 SFT 模型太远。PPO 本质是 actor-critic 方法。优化目标：$\max_\pi \mathbb{E}[RM(prompt, response) - \beta \cdot D_{KL}(\pi_\theta \parallel \pi_{ref})]$。
 
 ---
 
@@ -46,11 +44,9 @@ RM 的要求：准确捕捉人类偏好的细粒度差异；不能只学会长�
 
 **Clipped Surrogate Objective**（PPO 的核心创新）：用 clip 限制每次策略更新的幅度。
 
-```
-L_CLIP = E[min(r_t(θ) * A_t, clip(r_t(θ), 1-ε, 1+ε) * A_t)]
-```
+$$\mathcal{L}_{CLIP} = \mathbb{E}\left[\min\left(r_t A_t, \text{clip}(r_t, 1-\epsilon, 1+\epsilon) A_t\right)\right]$$
 
-其中 r_t(θ) = π_θ(a_t|s_t) / π_old(a_t|s_t) 是新旧策略的概率比。当 advantage A_t > 0（这个 action 好），ratio 不要超过 1+ε，防止过度利用；当 advantage A_t < 0（这个 action 不好），ratio 不要低于 1-ε，防止过度惩罚。
+其中 $r_t = \frac{\pi_\theta(a_t|s_t)}{\pi_{old}(a_t|s_t)}$ 是新旧策略的概率比。当 advantage A_t > 0（这个 action 好），ratio 不要超过 1+ε，防止过度利用；当 advantage A_t < 0（这个 action 不好），ratio 不要低于 1-ε，防止过度惩罚。
 
 **KL Penalty**：在 RLHF 中，PPO 的 reward 不是裸的 RM 分数，而是加了 KL 惩罚：R_total = RM(prompt, response) - β * KL(π_θ || π_ref)。如果没有 KL penalty，模型会迅速学会 exploit RM 的漏洞（reward hacking），输出高 reward 但质量极差的文本。
 
