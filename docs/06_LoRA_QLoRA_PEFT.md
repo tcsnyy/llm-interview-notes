@@ -849,6 +849,10 @@ q_proj 和 o_proj 的 LoRA 参数最多（hidden_size × hidden_size 的两个�
 │  model-000xx.safetensors   → 合并后的完整模型权重               │
 │  adapter_config.json       → LoRA 超参数元数据                 │
 │                                                             │
+│ 【DoRA (Weight-Decomposed LoRA)】                             │
+│  将权重分解为方向+幅度，只对方向做低秩更新                        │
+│  效果接近全量微调，比标准 LoRA 更好。了解即可。                    │
+│                                                             │
 │ 【DPO 从 SFT LoRA 继续训练】                                   │
 │  1. 加载 SFT adapter（is_trainable=True）                     │
 │  2. 不要重新初始化 LoRA                                       │

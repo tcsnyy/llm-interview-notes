@@ -593,6 +593,7 @@ vllm serve ./model --enable-prefix-caching
 - **Chat Template 一致性**：训练推理模板必须一致，否则模型行为漂移。
 - **max-model-len**：控制 KV Cache 上限，越小越省显存。
 - **gpu-memory-utilization**：vLLM 的显存使用比例，设 0.90 留余量防 OOM。
+- **Speculative Decoding**：用小模型（draft）快速生成候选 token，大模型一次验证多个。无损加速 2-3x——输出分布完全相同。draft 命中率是关键。
 
 ### 代码速查
 

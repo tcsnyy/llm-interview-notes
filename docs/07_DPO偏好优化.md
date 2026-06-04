@@ -988,6 +988,15 @@ if __name__ == "__main__":
 │   有 reference: DPO → IPO（更严格）→ KTO（不需成对数据）                    │
 │   无 reference: SimPO（长度惩罚）→ ORPO（SFT+偏好联合）→ CPO（极简）         │
 │                                                                      │
+│ 【KTO (Kahneman-Tversky Optimization)】                                │
+│   不需要 chosen/rejected 成对数据，只需单条回答的好/坏标签                    │
+│   利用前景理论中的损失厌恶，对"坏回答"施加更强惩罚                             │
+│                                                                      │
+│ 【CPO (Contrastive Preference Optimization)】                           │
+│   最简 DPO 变体：连 reference model 都省了                                 │
+│   loss = -log σ(β·[log π(chosen) - log π(rejected)])                  │
+│   快但可能过拟合，适合小规模实验                                            │
+│                                                                      │
 │ 【显存优化】                                                           │
 │   1. ref model 也做 QLoRA 加载 → 4GB 而非 16GB                          │
 │   2. 顺序计算：先 ref（no_grad）→ offload CPU → 再 policy                 │

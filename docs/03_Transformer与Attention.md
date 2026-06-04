@@ -407,3 +407,4 @@ CoT 蒸馏的风险：
 11. FlashAttention 通过分块计算 + IO 优化加速 attention
 12. 长上下文难在 Attention $O(n^2 d)$、KV Cache 显存、位置外推、Lost in Middle
 13. MiniMind 实现了完整的 decoder-only Transformer（RMSNorm+RoPE+GQA+SwiGLU+FlashAttn）
+14. **Transformer FLOPs 估算**：前向约 $2\cdot P\cdot S$ FLOPs（P=参数量, S=序列长度），反向约 4×。一个 8B 模型在 seq_len=2048 时前向约 32.8 TFLOPs
