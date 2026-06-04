@@ -42,16 +42,34 @@ Decoder-only 成为主流的原因：
 
 ## 三、Self-Attention / Multi-Head Attention
 
-### Q: 手写一下 Multi-Head Attention 的 forward 过程，包括维度变换。star:5
+### Q: 详细推导 Self-Attention 的计算过程，包括维度。star:5
 
-流程：
-1. 输入 x: `[batch, seq_len, d_model]`
-2. 分别通过 Q/K/V 线性投影：`[batch, seq_len, d_model] -> [batch, seq_len, d_model]`
-3. Reshape 为多头：`[batch, seq_len, num_heads, head_dim]` -> transpose -> `[batch, num_heads, seq_len, head_dim]`
-4. 计算 attention score：$\text{softmax}\left(\frac{QK^T}{\sqrt{d_k}}\right)$
-5. 乘以 V：`[batch, num_heads, seq_len, head_dim]`
-6. 合并多头：transpose + reshape -> `[batch, seq_len, d_model]`
-7. Output projection
+**核心公式**：
+
+$$\text{Attention}(Q, K, V) = \text{softmax}\left(\frac{QK^T}{\sqrt{d_k}}\right)V$$
+
+**逐步推导（假设输入 $X \in \mathbb{R}^{n \times d}$，$n$ 是序列长度，$d$ 是模型维度）：**
+
+1. **线性变换**：通过三个权重矩阵生成 Q、K、V
+   $$Q = XW^Q, \quad K = XW^K, \quad V = XW^V$$
+   其中 $W^Q, W^K \in \mathbb{R}^{d \times d_k}$，$W^V \in \mathbb{R}^{d \times d_v}$
+
+2. **计算注意力分数**：$S = \frac{QK^T}{\sqrt{d_k}} \in \mathbb{R}^{n \times n}$
+
+3. **Softmax 归一化**（对每一行）：$A = \text{softmax}(S) \in \mathbb{R}^{n \times n}$
+
+4. **加权求和**：$\text{Output} = AV \in \mathbb{R}^{n \times d_v}$
+
+**计算复杂度拆解**：
+
+| 操作 | 复杂度 |
+|------|--------|
+| $QK^T$ 矩阵乘法 | $O(n^2 d)$ |
+| Softmax | $O(n^2)$ |
+| 乘以 V | $O(n^2 d)$ |
+| **总计** | **$O(n^2 d)$** |
+
+其中 $n$ 为序列长度，$d$ 为维度。序列翻倍，计算量翻四倍——这是长上下文的根本瓶颈。
 
 **手撕代码**：见文件 16_手撕代码合集.md
 
@@ -59,17 +77,20 @@ Decoder-only 成为主流的原因：
 
 ## 四、MHA / MQA / GQA 区别
 
-### Q: MHA、MQA、GQA 分别是什么？为什么现在都用 GQA？star:5
+### Q: MHA、MQA、GQA、MLA 分别是什么？为什么现在都用 GQA？star:5
 
-| 类型 | 全称 | K/V 头数 | 参数/显存 | 效果 |
-|------|------|---------|----------|------|
-| MHA | Multi-Head Attention | = Q 头数 | 最大 | 最好 |
-| MQA | Multi-Query Attention | = 1 | 最小 | 略差 |
-| GQA | Grouped-Query Attention | 1 < N < Q头数 | 折中 | 接近 MHA |
+| 类型 | 全称 | Q头数 | K/V头数 | KV Cache | 效果 | 代表模型 |
+|------|------|-------|---------|----------|------|---------|
+| MHA | Multi-Head Attention | h | h | 大 | 最好 | GPT-2, BERT |
+| MQA | Multi-Query Attention | h | 1 | 最小 | 略差 | PaLM, Falcon |
+| GQA | Grouped-Query Attention | h | g (1<g<h) | 中等 | 接近 MHA | LLaMA-2 70B, Qwen3 |
+| MLA | Multi-head Latent Attention | h | 压缩到低维潜空间 | 极小(~6.7%) | 接近 MHA | DeepSeek-V2/V3 |
 
-GQA 是 MHA 和 MQA 的折中方案。Q 头保持不变，K/V 头分成若干组，每组共享一对 K/V 头。这样既减少了 KV Cache（因为 K/V 头更少），又不会像 MQA 那样损失太多效果。
+GQA 是 MHA 和 MQA 的折中方案。Q 头保持不变，K/V 头分成若干组，每组共享一对 K/V 头。
 
-现在模型普遍用 GQA：Qwen3、Llama 3、Mistral 等都使用 GQA。MiniMind 项目中 `num_key_value_heads=2`（Q 头=8），使用了 GQA。
+MLA 更进一步：将 K 和 V 先压缩到一个低维潜在空间 $c_t = W_{DKV}[k_t; v_t]$，只缓存低维的 $c_t$，需要时再投影回来。这样 KV Cache 可以减少约 93.3%（DeepSeek-V2 的数据），同时保持接近 MHA 的效果。代价是增加了投影计算。
+
+现在模型普遍用 GQA：Qwen3、Llama 3、Mistral 等。MLA 是 DeepSeek-V2/V3 的核心创新。MiniMind 项目中 `num_key_value_heads=2`（Q 头=8），使用了 GQA。
 
 ---
 
@@ -89,7 +110,12 @@ Q 和 K 的点积计算相关性（attention score），然后用这个 score �
 
 ### Q: Attention 公式里为什么除以 sqrt(d_k)？star:4
 
-假设 Q 和 K 的每个元素独立同分布（均值 0，方差 1），则 $QK^T$ 的点积方差为 $d_k$。当 $d_k$ 很大时，点积值会很大，导致 softmax 的梯度消失（进入饱和区）。除以 $\sqrt{d_k}$ 将方差归一化到 1，保持 softmax 梯度健康。
+假设 Q 和 K 的每个元素独立同分布（均值 0，方差 1），则 $QK^T$ 的点积方差为 $d_k$。当 $d_k$ 很大时，点积值会很大，导致 softmax 输出趋近于 one-hot 分布，梯度接近为零。
+
+**数学证明**：假设 $q_i, k_j \sim \mathcal{N}(0, 1)$，则
+$$\text{Var}(q \cdot k) = \sum_{i=1}^{d_k} \text{Var}(q_i k_i) = d_k$$
+
+除以 $\sqrt{d_k}$ 将方差归一化到 1，保持 softmax 梯度健康。
 
 ---
 
@@ -139,16 +165,31 @@ MiniMind 使用 RMSNorm + PreNorm 结构。
 
 ### Q: RoPE 是什么？它解决了什么问题？star:5
 
-**RoPE (Rotary Position Embedding)** 是目前最主流的位置编码方式。它通过旋转变换将位置信息编码到 Q 和 K 中：
-$$f(q, m) = q \cdot e^{im\theta}$$
-$$f(k, n) = k \cdot e^{in\theta}$$
+**RoPE (Rotary Position Embedding)** 是目前最主流的位置编码方式。它通过旋转矩阵将位置信息编码到 Q 和 K 中，使得内积只依赖于**相对位置**。
 
-点积后：$f(q,m) \cdot f(k,n) = q \cdot k \cdot e^{i(m-n)\theta}$，只依赖于相对位置 m-n。
+**二维旋转矩阵形式**（以 head_dim=2 为例，实际在高维中是逐对维度施加旋转）：
+
+$$f(q, m) = R_m q = \begin{pmatrix} \cos m\theta & -\sin m\theta \\ \sin m\theta & \cos m\theta \end{pmatrix} \begin{pmatrix} q_0 \\ q_1 \end{pmatrix}$$
+
+**关键性质**：两个位置 m 和 n 的 Q、K 内积只依赖相对位置 $n-m$：
+
+$$\langle f(q, m), f(k, n) \rangle = q^T R_{n-m} k = g(q, k, n-m)$$
+
+因为旋转矩阵的性质 $R_m^T R_n = R_{n-m}$，内积与绝对位置 m 和 n 无关。
 
 **优点**：
-1. 天然支持相对位置
-2. 通过调整 theta 可以外推到更长的上下文
-3. 计算高效
+1. 天然支持相对位置，可外推到更长序列
+2. 与线性注意力兼容
+3. 计算高效（逐元素乘法 + 旋转）
+
+**与其他位置编码的对比**：
+
+| 方法 | 类型 | 外推性 | 参数量 | 代表模型 |
+|------|------|--------|--------|----------|
+| Sinusoidal | 绝对 | 较差 | 0 | Transformer 原始 |
+| Learned | 绝对 | 差 | $n \times d$ | GPT-2, BERT |
+| ALiBi | 相对(偏置) | 好 | 0 | BLOOM |
+| **RoPE** | **相对(旋转)** | **较好** | **0** | **LLaMA, Qwen, DeepSeek** |
 
 Qwen3 使用 RoPE，MiniMind 配置中 `rope_theta=1,000,000`，且支持 YaRN 外推。
 
@@ -207,14 +248,15 @@ MiniMind 项目 `model/transformer.py` 包含标准 Transformer 教学实现，�
 ## 背诵版总结
 
 1. Transformer 核心：Embedding + Attention + FFN + Residual + Norm + LM Head
-2. MHA/MQA/GQA：GQA 是折中，K/V 头少于 Q 头但多于 1
-3. QKV：Q 匹配相关，K 定义自身特征，V 传递内容
-4. sqrt(d_k)：防止点积方差过大导致 softmax 梯度消失
-5. Causal Mask 限制看到未来，Padding Mask 忽略填充
-6. SwiGLU 替代 ReLU/GELU，效果更好但参数量增加
-7. RMSNorm 替代 LayerNorm，去均值化
-8. RoPE 用旋转变换编码相对位置，主流方案
-9. KV Cache 避免重复计算，推理加速关键
-10. FlashAttention 通过分块计算 + IO 优化加速 attention
-11. 长上下文难在 Attention O(n^2)、KV Cache 显存、位置外推、Lost in Middle
-12. MiniMind 实现了完整的 decoder-only Transformer（RMSNorm+RoPE+GQA+SwiGLU+FlashAttn）
+2. MHA/MQA/GQA/MLA：GQA 是折中；MLA 将 KV 压缩到潜空间，KV Cache 减少约 93%
+3. Self-Attention 四步推导：$X \to Q,K,V$ → $S = QK^T/\sqrt{d_k}$ → Softmax → 加权求和，总复杂度 $O(n^2 d)$
+4. QKV：Q 匹配相关，K 定义自身特征，V 传递内容
+5. sqrt(d_k)：防止点积方差 = $d_k$ 导致 softmax 梯度消失，数学上有 $\text{Var}(q\cdot k)=d_k$
+6. Causal Mask 限制看到未来，Padding Mask 忽略填充
+7. SwiGLU 替代 ReLU/GELU，效果更好但参数量增加
+8. RMSNorm 替代 LayerNorm，去均值化
+9. RoPE 用 2D 旋转矩阵编码位置，核心性质 $\langle f(q,m), f(k,n)\rangle = g(q,k,n-m)$ 仅依赖相对位置
+10. KV Cache 避免重复计算，推理加速关键
+11. FlashAttention 通过分块计算 + IO 优化加速 attention
+12. 长上下文难在 Attention $O(n^2 d)$、KV Cache 显存、位置外推、Lost in Middle
+13. MiniMind 实现了完整的 decoder-only Transformer（RMSNorm+RoPE+GQA+SwiGLU+FlashAttn）
